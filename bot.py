@@ -4,9 +4,16 @@ from discord import app_commands
 
 import aiosqlite
 import time
+import os
+from dotenv import load_dotenv
+import os
 
-# 🔑 PUT YOUR NEW TOKEN HERE (after resetting it)
-TOKEN = "MTQ3MDEyNDcwMzI0MTczNjQyNg.Gl8tcz.6r92ytDblSF7NKPhDjHO2OwZUPF81Snvt2pjSE"
+load_dotenv()
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+if not TOKEN:
+    raise ValueError("❌ DISCORD_TOKEN not found")
+
 
 # ✅ Your IDs (already filled)
 OWNER_ID = 738790396511125654
