@@ -4,7 +4,7 @@ from discord import app_commands
 
 import aiosqlite
 import time
-import os
+
 from dotenv import load_dotenv
 import os
 
