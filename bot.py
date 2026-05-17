@@ -383,6 +383,11 @@ async def temproles(interaction: discord.Interaction, user: discord.User):
     rows = await get_user_temp_roles(user.id, interaction.guild.id)
 
     if not rows:
+        # Double-check with no guild filter in case of bug
+        all_rows = await get_user_temp_roles(user.id)
+        if all_rows:
+            return await interaction.followup.send(f"✅ **{user}** has temporary roles but not in this server.", ephemeral=True)
+        
         return await interaction.followup.send(f"✅ **{user}** has no active temporary roles in this server.", ephemeral=True)
 
     embed = discord.Embed(title=f"Temporary Roles for {user}", color=discord.Color.blue())
