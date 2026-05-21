@@ -307,10 +307,7 @@ async def temprole(
     role: discord.Role,
     duration: str = None
 ):
-    if not is_admin(interaction.user):
-        await interaction.response.send_message("❌ Not allowed", ephemeral=True)
-        return
-
+    # No code permission check - Discord handles it
     action = action.lower()
     if action not in ["add", "remove"]:
         await interaction.response.send_message("❌ Action must be `add` or `remove`", ephemeral=True)
