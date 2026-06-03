@@ -7,6 +7,7 @@ import time
 import asyncio
 import re
 from datetime import timedelta, datetime, timezone
+import zoneinfo
 
 from dotenv import load_dotenv
 import os
@@ -47,6 +48,15 @@ def parse_duration(duration: str) -> int:
     if unit == 'h': return amount * 3600
     if unit == 'd': return amount * 86400
     return 0
+
+def parse_loa_duration(duration: str) -> int:
+    duration = duration.lower()
+    if "week" in duration:
+        num = int(''.join(filter(str.isdigit, duration)) or 1)
+        return num * 7
+    else:
+        num = int(''.join(filter(str.isdigit, duration)) or 1)
+        return num
 
 # ================== VIEWS ==================
 class GlobalBanRequestView(discord.ui.View):
@@ -398,6 +408,119 @@ async def temproles(interaction: discord.Interaction, user: discord.User):
         embed.add_field(name=role_name, value=f"Expires: {expires}", inline=False)
 
     await interaction.followup.send(embed=embed, ephemeral=True)
+
+# ================== LOA REQUEST ==================
+
+LOA_ROLE_ID = 1457118167204630725  # ← Change to your actual LOA Authorised role ID
+
+class LOARequestView(discord.ui.View):
+    def __init__(self, requester: discord.Member, reason: str, length: str):
+        super().__init__(timeout=None)
+        self.requester = requester
+        self.reason = reason
+        self.length = length
+
+    async def disable_buttons(self):
+        for item in self.children:
+            item.disabled = True
+        await self.message.edit(view=self)
+
+    @discord.ui.button(label="Approve LOA", style=discord.ButtonStyle.green)
+    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not is_admin(interaction.user):
+            await interaction.response.send_message("❌ Not allowed", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+        guild = interaction.guild
+        member = guild.get_member(self.requester.id)
+        loa_role = guild.get_role(LOA_ROLE_ID)
+
+        success = False
+        if member and loa_role:
+            try:
+                await member.add_roles(loa_role, reason=f"LOA Approved • {self.length}")
+                success = True
+            except:
+                pass
+
+        await self.disable_buttons()
+
+        embed = interaction.message.embeds[0]
+        embed.color = discord.Color.green()
+        embed.set_field_at(3, name="Status", value=f"Approved by {interaction.user.mention}", inline=False)
+        embed.set_footer(text=f"UKRP LOA Request - Approved • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
+        
+        if success:
+            embed.add_field(name="Role Applied", value=loa_role.mention if loa_role else "LOA Role", inline=False)
+
+        # Change button text
+        button.label = f"LOA Approved by {interaction.user.display_name}"
+        button.style = discord.ButtonStyle.green
+        button.disabled = True
+
+        await interaction.message.edit(embed=embed, view=self)
+
+    @discord.ui.button(label="Deny LOA", style=discord.ButtonStyle.red)
+    async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not is_admin(interaction.user):
+            await interaction.response.send_message("❌ Not allowed", ephemeral=True)
+            return
+
+        await self.disable_buttons()
+
+        embed = interaction.message.embeds[0]
+        embed.color = discord.Color.red()
+        embed.set_field_at(3, name="Status", value=f"Denied by {interaction.user.mention}", inline=False)
+        embed.set_footer(text=f"UKRP LOA Request - Denied • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
+
+        # Change button text
+        button.label = f"LOA Denied by {interaction.user.display_name}"
+        button.style = discord.ButtonStyle.red
+        button.disabled = True
+
+        await interaction.message.edit(embed=embed, view=self)
+
+
+@bot.tree.command(name="loarequest", description="Submit a Leave of Absence request")
+@app_commands.describe(
+    reason="Reason for LOA",
+    length="Length of LOA (e.g. 1 week, 2 weeks, 10 days)"
+)
+async def loarequest(interaction: discord.Interaction, reason: str, length: str):
+    if not has_request_role(interaction.user) and not is_admin(interaction.user):
+        await interaction.response.send_message("❌ You cannot request LOAs", ephemeral=True)
+        return
+
+    try:
+        days = parse_loa_duration(length)
+        if days < 7:
+            await interaction.response.send_message("❌ Minimum LOA is 7 days.", ephemeral=True)
+            return
+        if days > 28:
+            await interaction.response.send_message("❌ Maximum LOA is 4 weeks (28 days).", ephemeral=True)
+            return
+    except:
+        await interaction.response.send_message("❌ Invalid format. Use: `1 week`, `10 days`, `3 weeks`", ephemeral=True)
+        return
+
+    await interaction.response.send_message("✅ LOA request submitted!", ephemeral=True)
+
+    embed = discord.Embed(title="UKRP LOA Request", color=discord.Color.orange())
+    embed.add_field(name="Submitted By", value=interaction.user.mention, inline=False)
+    embed.add_field(name="Duration", value=length, inline=False)
+    embed.add_field(name="Reason", value=reason, inline=False)
+    embed.add_field(name="Status", value="Pending", inline=False)
+    embed.set_footer(text="UKRP LOA Request - pending")
+    
+    # London Timezone
+    embed.timestamp = datetime.now(zoneinfo.ZoneInfo("Europe/London"))
+
+    channel = bot.get_channel(LOG_CHANNEL_ID)
+    if channel:
+        view = LOARequestView(interaction.user, reason, length)
+        await channel.send(embed=embed, view=view)
+
 
 # ================== RUN BOT ==================
 bot.run(TOKEN)
