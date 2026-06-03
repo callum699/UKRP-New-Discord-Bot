@@ -614,8 +614,10 @@ async def loarequest(interaction: discord.Interaction, reason: str, length: str)
 
 @bot.tree.command(name="activeloas", description="Show all users currently on LOA")
 async def activeloas(interaction: discord.Interaction):
-    if not has_request_role(interaction.user) and not is_admin(interaction.user):
-        await interaction.response.send_message("❌ Not allowed", ephemeral=True)
+    # Only LOA Tracker + Admins can use this command
+    if not (is_admin(interaction.user) or 
+            any(role.id == LOA_TRACKER_ROLE_ID for role in interaction.user.roles)):
+        await interaction.response.send_message("❌ Only LOA Trackers can view active LOAs.", ephemeral=True)
         return
 
     await interaction.response.defer()
@@ -633,7 +635,7 @@ async def activeloas(interaction: discord.Interaction):
     for user_id, approved_by, end_time in active_loas:
         member = interaction.guild.get_member(int(user_id))
         if not member:
-            continue  # Skip if user left the server
+            continue
 
         name = member.display_name
         end_dt = datetime.fromtimestamp(end_time, tz=timezone.utc)
