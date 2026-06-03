@@ -452,12 +452,15 @@ class LOARequestView(discord.ui.View):
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.green()
         embed.set_field_at(3, name="Status", value=f"Approved by {interaction.user.mention}", inline=False)
-        embed.set_footer(text=f"UKRP LOA Request - Approved • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
+        embed.set_footer(text=f"UKRP LOA Request - Approved")
 
-        # Keep only Approve button, remove Deny
+        # Keep only Approve button
         self.clear_items()
-        self.add_item(discord.ui.Button(label=f"LOA Approved by {interaction.user.display_name}", 
-                                       style=discord.ButtonStyle.green, disabled=True))
+        self.add_item(discord.ui.Button(
+            label=f"LOA Approved by {interaction.user.display_name}", 
+            style=discord.ButtonStyle.green, 
+            disabled=True
+        ))
 
         await interaction.message.edit(embed=embed, view=self)
 
@@ -473,12 +476,15 @@ class LOARequestView(discord.ui.View):
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.red()
         embed.set_field_at(3, name="Status", value=f"Denied by {interaction.user.mention}", inline=False)
-        embed.set_footer(text=f"UKRP LOA Request - Denied • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
+        embed.set_footer(text=f"UKRP LOA Request - Denied")
 
-        # Keep only Deny button, remove Approve
+        # Keep only Deny button
         self.clear_items()
-        self.add_item(discord.ui.Button(label=f"LOA Denied by {interaction.user.display_name}", 
-                                       style=discord.ButtonStyle.red, disabled=True))
+        self.add_item(discord.ui.Button(
+            label=f"LOA Denied by {interaction.user.display_name}", 
+            style=discord.ButtonStyle.red, 
+            disabled=True
+        ))
 
         await interaction.message.edit(embed=embed, view=self)
 
