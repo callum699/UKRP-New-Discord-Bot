@@ -24,8 +24,9 @@ GUILD_ID = 1457118167078801631
 
 REQUEST_ROLE_IDS = [1460998934842441809, 1457118167204630725, 1457118167108161540]
 ADMIN_ROLE_IDS = [1457118167204630728]
-
 LOA_TRACKER_ROLE_ID =  1457118167095841075
+
+LOA_LOG_CHANNEL_ID = 1511706584189767700
 
 INACTIVITY_WARNING_ROLE_ID = 1457118167091642440
 LOA_COOLDOWN_ROLE_ID = 1457118167108161545
@@ -448,13 +449,13 @@ class LOARequestView(discord.ui.View):
             except:
                 pass
 
-        # Update embed
+        # Update main embed
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.green()
         embed.set_field_at(3, name="Status", value=f"Approved by {interaction.user.mention}", inline=False)
         embed.set_footer(text=f"UKRP LOA Request - Approved")
 
-        # Keep only Approve button
+        # Keep only approved button
         self.clear_items()
         self.add_item(discord.ui.Button(
             label=f"LOA Approved by {interaction.user.display_name}", 
@@ -464,6 +465,16 @@ class LOARequestView(discord.ui.View):
 
         await interaction.message.edit(embed=embed, view=self)
 
+        # === Send Log to LOA Log Channel ===
+        log_channel = bot.get_channel(LOA_LOG_CHANNEL_ID)
+        if log_channel:
+            log_embed = discord.Embed(title="UKRP LOA Request Log", color=discord.Color.green())
+            log_embed.add_field(name="Your request was approved by", value=interaction.user.mention, inline=False)
+            log_embed.add_field(name="Duration", value=self.length, inline=False)
+            log_embed.add_field(name="Reason", value=self.reason, inline=False)
+            log_embed.add_field(name="", value=f"Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}", inline=False)
+            await log_channel.send(embed=log_embed)
+
     @discord.ui.button(label="Deny LOA", style=discord.ButtonStyle.red)
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not self.can_manage_loa(interaction.user):
@@ -472,13 +483,11 @@ class LOARequestView(discord.ui.View):
 
         await interaction.response.defer()
 
-        # Update embed
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.red()
         embed.set_field_at(3, name="Status", value=f"Denied by {interaction.user.mention}", inline=False)
         embed.set_footer(text=f"UKRP LOA Request - Denied")
 
-        # Keep only Deny button
         self.clear_items()
         self.add_item(discord.ui.Button(
             label=f"LOA Denied by {interaction.user.display_name}", 
