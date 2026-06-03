@@ -438,7 +438,6 @@ class LOARequestView(discord.ui.View):
 
         await interaction.response.defer()
 
-        # Apply LOA Role
         guild = interaction.guild
         member = guild.get_member(self.requester.id)
         loa_role = guild.get_role(LOA_ROLE_ID)
@@ -455,11 +454,10 @@ class LOARequestView(discord.ui.View):
         embed.set_field_at(3, name="Status", value=f"Approved by {interaction.user.mention}", inline=False)
         embed.set_footer(text=f"UKRP LOA Request - Approved • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
 
-        # Disable and update buttons
-        for child in self.children:
-            child.disabled = True
-            if child.label == "Approve LOA":
-                child.label = f"LOA Approved by {interaction.user.display_name}"
+        # Keep only Approve button, remove Deny
+        self.clear_items()
+        self.add_item(discord.ui.Button(label=f"LOA Approved by {interaction.user.display_name}", 
+                                       style=discord.ButtonStyle.green, disabled=True))
 
         await interaction.message.edit(embed=embed, view=self)
 
@@ -477,11 +475,10 @@ class LOARequestView(discord.ui.View):
         embed.set_field_at(3, name="Status", value=f"Denied by {interaction.user.mention}", inline=False)
         embed.set_footer(text=f"UKRP LOA Request - Denied • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
 
-        # Disable and update buttons
-        for child in self.children:
-            child.disabled = True
-            if child.label == "Deny LOA":
-                child.label = f"LOA Denied by {interaction.user.display_name}"
+        # Keep only Deny button, remove Approve
+        self.clear_items()
+        self.add_item(discord.ui.Button(label=f"LOA Denied by {interaction.user.display_name}", 
+                                       style=discord.ButtonStyle.red, disabled=True))
 
         await interaction.message.edit(embed=embed, view=self)
 
