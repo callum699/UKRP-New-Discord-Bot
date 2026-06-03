@@ -259,6 +259,22 @@ async def on_guild_join(guild):
         except:
             pass
 
+@bot.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+    """Remove user from active_loas if LOA role is manually removed"""
+    loa_role = after.guild.get_role(LOA_ROLE_ID)
+    if not loa_role:
+        return
+
+    had_loa = loa_role in before.roles
+    has_loa = loa_role in after.roles
+
+    # If LOA role was removed
+    if had_loa and not has_loa:
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("DELETE FROM active_loas WHERE user_id = ?", (str(after.id),))
+            await db.commit()
+
 # ================== COMMANDS ==================
 
 @bot.tree.command(name="globalban", description="Ban a user from all guilds")
@@ -622,17 +638,17 @@ async def activeloas(interaction: discord.Interaction):
         return await interaction.followup.send("✅ No users are currently on LOA.")
 
     embed = discord.Embed(title="Current Active LOAs", color=discord.Color.blue())
-    now = int(time.time())
 
     for user_id, approved_by, end_time in active_loas:
         member = interaction.guild.get_member(int(user_id))
-        name = member.display_name if member else f"Unknown User ({user_id})"
-        
+        if not member:
+            continue  # Skip if user left the server
+
+        name = member.display_name
         end_dt = datetime.fromtimestamp(end_time, tz=timezone.utc)
         time_left = discord.utils.format_dt(end_dt, style='R')
-        
         approver = f"<@{approved_by}>"
-        
+
         embed.add_field(
             name=name,
             value=f"**Approved by:** {approver}\n**Ends:** {time_left}",
