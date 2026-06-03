@@ -411,7 +411,7 @@ async def temproles(interaction: discord.Interaction, user: discord.User):
 
 # ================== LOA REQUEST ==================
 
-LOA_ROLE_ID = 1457118167204630725  # ← Change to your actual LOA Authorised role ID
+LOA_ROLE_ID = 1457118167204630724
 
 class LOARequestView(discord.ui.View):
     def __init__(self, requester: discord.Member, reason: str, length: str):
@@ -445,19 +445,13 @@ class LOARequestView(discord.ui.View):
                 pass
 
         await self.disable_buttons()
-
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.green()
         embed.set_field_at(3, name="Status", value=f"Approved by {interaction.user.mention}", inline=False)
-        embed.set_footer(text=f"UKRP LOA Request - Approved • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
+        embed.set_footer(text=f"UKRP LOA Request - approved • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
         
         if success:
-            embed.add_field(name="Role Applied", value=loa_role.mention if loa_role else "LOA Role", inline=False)
-
-        # Change button text
-        button.label = f"LOA Approved by {interaction.user.display_name}"
-        button.style = discord.ButtonStyle.green
-        button.disabled = True
+            embed.add_field(name="Role Applied", value=loa_role.mention, inline=False)
 
         await interaction.message.edit(embed=embed, view=self)
 
@@ -468,16 +462,10 @@ class LOARequestView(discord.ui.View):
             return
 
         await self.disable_buttons()
-
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.red()
         embed.set_field_at(3, name="Status", value=f"Denied by {interaction.user.mention}", inline=False)
-        embed.set_footer(text=f"UKRP LOA Request - Denied • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
-
-        # Change button text
-        button.label = f"LOA Denied by {interaction.user.display_name}"
-        button.style = discord.ButtonStyle.red
-        button.disabled = True
+        embed.set_footer(text=f"UKRP LOA Request - denied • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
 
         await interaction.message.edit(embed=embed, view=self)
 
@@ -512,14 +500,11 @@ async def loarequest(interaction: discord.Interaction, reason: str, length: str)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.add_field(name="Status", value="Pending", inline=False)
     embed.set_footer(text="UKRP LOA Request - pending")
-    
-    # London Timezone
     embed.timestamp = datetime.now(zoneinfo.ZoneInfo("Europe/London"))
 
-    channel = bot.get_channel(LOG_CHANNEL_ID)
-    if channel:
-        view = LOARequestView(interaction.user, reason, length)
-        await channel.send(embed=embed, view=view)
+    # Send in the SAME channel where the command was used
+    view = LOARequestView(interaction.user, reason, length)
+    await interaction.channel.send(embed=embed, view=view)
 
 
 # ================== RUN BOT ==================
