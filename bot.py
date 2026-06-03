@@ -430,11 +430,6 @@ class LOARequestView(discord.ui.View):
             return True
         return any(role.id == LOA_TRACKER_ROLE_ID for role in user.roles)
 
-    async def disable_buttons(self):
-        for item in self.children:
-            item.disabled = True
-        await self.message.edit(view=self)
-
     @discord.ui.button(label="Approve LOA", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not self.can_manage_loa(interaction.user):
@@ -443,32 +438,28 @@ class LOARequestView(discord.ui.View):
 
         await interaction.response.defer()
 
+        # Apply LOA Role
         guild = interaction.guild
         member = guild.get_member(self.requester.id)
         loa_role = guild.get_role(LOA_ROLE_ID)
 
-        success = False
         if member and loa_role:
             try:
                 await member.add_roles(loa_role, reason=f"LOA Approved • {self.length}")
-                success = True
             except:
                 pass
 
-        # Update button text and disable
-        button.label = f"LOA Approved by {interaction.user.display_name}"
-        button.style = discord.ButtonStyle.green
-        button.disabled = True
-
-        await self.disable_buttons()
-
+        # Update embed
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.green()
         embed.set_field_at(3, name="Status", value=f"Approved by {interaction.user.mention}", inline=False)
-        embed.set_footer(text=f"UKRP LOA Request - approved • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
+        embed.set_footer(text=f"UKRP LOA Request - Approved • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
 
-        if success:
-            embed.add_field(name="Role Applied", value=loa_role.mention, inline=False)
+        # Disable and update buttons
+        for child in self.children:
+            child.disabled = True
+            if child.label == "Approve LOA":
+                child.label = f"LOA Approved by {interaction.user.display_name}"
 
         await interaction.message.edit(embed=embed, view=self)
 
@@ -480,17 +471,17 @@ class LOARequestView(discord.ui.View):
 
         await interaction.response.defer()
 
-        # Update button text and disable
-        button.label = f"LOA Denied by {interaction.user.display_name}"
-        button.style = discord.ButtonStyle.red
-        button.disabled = True
-
-        await self.disable_buttons()
-
+        # Update embed
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.red()
         embed.set_field_at(3, name="Status", value=f"Denied by {interaction.user.mention}", inline=False)
-        embed.set_footer(text=f"UKRP LOA Request - denied • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
+        embed.set_footer(text=f"UKRP LOA Request - Denied • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
+
+        # Disable and update buttons
+        for child in self.children:
+            child.disabled = True
+            if child.label == "Deny LOA":
+                child.label = f"LOA Denied by {interaction.user.display_name}"
 
         await interaction.message.edit(embed=embed, view=self)
 
