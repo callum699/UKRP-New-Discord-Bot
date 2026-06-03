@@ -506,30 +506,17 @@ class LOARequestView(discord.ui.View):
         member = guild.get_member(self.requester.id)
         loa_role = guild.get_role(LOA_ROLE_ID)
 
-        # Calculate end time (approximate)
-        days = parse_loa_duration(self.length)
-        end_time = int(time.time()) + (days * 86400)
-
         if member and loa_role:
             try:
                 await member.add_roles(loa_role, reason=f"LOA Approved • {self.length}")
-                
-                # Save to database
-                async with aiosqlite.connect(DB_NAME) as db:
-                    await db.execute("""INSERT OR REPLACE INTO active_loas 
-                        (user_id, approved_by, start_time, end_time, reason, length)
-                        VALUES (?, ?, ?, ?, ?, ?)""", 
-                        (str(self.requester.id), str(interaction.user.id), 
-                         int(time.time()), end_time, self.reason, self.length))
-                    await db.commit()
             except:
                 pass
 
-        # Update main message
+        # Update main embed
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.green()
         embed.set_field_at(3, name="Status", value=f"Approved by {interaction.user.mention}", inline=False)
-        embed.set_footer(text=f"UKRP LOA Request - approved")
+        embed.set_footer(text=f"UKRP LOA Request - Approved")
 
         self.clear_items()
         self.add_item(discord.ui.Button(
@@ -543,11 +530,15 @@ class LOARequestView(discord.ui.View):
         # === Send Log to LOA Log Channel ===
         log_channel = bot.get_channel(LOA_LOG_CHANNEL_ID)
         if log_channel:
-            log_embed = discord.Embed(title="UKRP LOA Request Log", color=discord.Color.green())
-            log_embed.add_field(name="Your request was approved by", value=interaction.user.mention, inline=False)
+            log_embed = discord.Embed(
+                title="UKRP LOA Request Log",
+                color=discord.Color.green(),
+                description=f"{self.requester.mention}'s LOA request has been accepted by {interaction.user.mention}"
+            )
             log_embed.add_field(name="Duration", value=self.length, inline=False)
             log_embed.add_field(name="Reason", value=self.reason, inline=False)
             log_embed.add_field(name="", value=f"Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}", inline=False)
+            
             await log_channel.send(embed=log_embed)
 
     @discord.ui.button(label="Deny LOA", style=discord.ButtonStyle.red)
