@@ -183,6 +183,36 @@ async def remove_expired_temp_roles():
         await db.execute("DELETE FROM temp_roles WHERE expires_at <= ?", (now,))
         await db.commit()
 
+# ================== LOA CLEANUP ==================
+
+async def remove_expired_loas():
+    now = int(time.time())
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT user_id FROM active_loas WHERE end_time <= ?", (now,)) as cursor:
+            expired = await cursor.fetchall()
+        
+        for (user_id,) in expired:
+            try:
+                guild = bot.get_guild(GUILD_ID)
+                if guild:
+                    member = guild.get_member(int(user_id))
+                    loa_role = guild.get_role(LOA_ROLE_ID)
+                    if member and loa_role:
+                        await member.remove_roles(loa_role, reason="LOA Expired")
+            except:
+                pass
+        
+        # Delete expired entries
+        await db.execute("DELETE FROM active_loas WHERE end_time <= ?", (now,))
+        await db.commit()
+
+
+async def loa_cleanup_loop():
+    await bot.wait_until_ready()
+    while True:
+        await remove_expired_loas()
+        await asyncio.sleep(300)  # Check every 5 minutes
+
 # ================== BOT SETUP ==================
 intents = discord.Intents.default()
 intents.members = True
@@ -193,6 +223,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def on_ready():
     await setup_db()
     bot.loop.create_task(temp_role_cleanup_loop())
+    bot.loop.create_task(loa_cleanup_loop())
     guild = discord.Object(id=GUILD_ID)
     bot.tree.copy_global_to(guild=guild)
     await bot.tree.sync(guild=guild)
@@ -203,6 +234,12 @@ async def temp_role_cleanup_loop():
     while True:
         await remove_expired_temp_roles()
         await asyncio.sleep(60)
+
+async def loa_cleanup_loop():
+    await bot.wait_until_ready()
+    while True:
+        await remove_expired_loas()
+        await asyncio.sleep(300)  # Check every 5 minutes
 
 @bot.event
 async def on_member_join(member):
