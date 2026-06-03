@@ -116,7 +116,17 @@ async def setup_db():
         await db.execute("""CREATE TABLE IF NOT EXISTS temp_roles (
             id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, guild_id TEXT,
             role_id TEXT, expires_at INTEGER, added_by TEXT, added_at INTEGER)""")
+        
+        await db.execute("""CREATE TABLE IF NOT EXISTS active_loas (
+            user_id TEXT PRIMARY KEY,
+            approved_by TEXT,
+            start_time INTEGER,
+            end_time INTEGER,
+            reason TEXT,
+            length TEXT
+        )""")
         await db.commit()
+        
 
 async def add_global_ban(user_id, reason):
     async with aiosqlite.connect(DB_NAME) as db:
@@ -443,19 +453,31 @@ class LOARequestView(discord.ui.View):
         member = guild.get_member(self.requester.id)
         loa_role = guild.get_role(LOA_ROLE_ID)
 
+        # Calculate end time (approximate)
+        days = parse_loa_duration(self.length)
+        end_time = int(time.time()) + (days * 86400)
+
         if member and loa_role:
             try:
                 await member.add_roles(loa_role, reason=f"LOA Approved • {self.length}")
+                
+                # Save to database
+                async with aiosqlite.connect(DB_NAME) as db:
+                    await db.execute("""INSERT OR REPLACE INTO active_loas 
+                        (user_id, approved_by, start_time, end_time, reason, length)
+                        VALUES (?, ?, ?, ?, ?, ?)""", 
+                        (str(self.requester.id), str(interaction.user.id), 
+                         int(time.time()), end_time, self.reason, self.length))
+                    await db.commit()
             except:
                 pass
 
-        # Update main embed
+        # Update main message
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.green()
         embed.set_field_at(3, name="Status", value=f"Approved by {interaction.user.mention}", inline=False)
-        embed.set_footer(text=f"UKRP LOA Request - Approved")
+        embed.set_footer(text=f"UKRP LOA Request - approved")
 
-        # Keep only approved button
         self.clear_items()
         self.add_item(discord.ui.Button(
             label=f"LOA Approved by {interaction.user.display_name}", 
@@ -545,6 +567,45 @@ async def loarequest(interaction: discord.Interaction, reason: str, length: str)
 
     view = LOARequestView(interaction.user, reason, length)
     await interaction.channel.send(embed=embed, view=view)
+
+@bot.tree.command(name="activeloas", description="Show all users currently on LOA")
+async def activeloas(interaction: discord.Interaction):
+    if not has_request_role(interaction.user) and not is_admin(interaction.user):
+        await interaction.response.send_message("❌ Not allowed", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("""SELECT user_id, approved_by, end_time 
+                                FROM active_loas ORDER BY end_time""") as cursor:
+            active_loas = await cursor.fetchall()
+
+    if not active_loas:
+        return await interaction.followup.send("✅ No users are currently on LOA.")
+
+    embed = discord.Embed(title="Current Active LOAs", color=discord.Color.blue())
+    now = int(time.time())
+
+    for user_id, approved_by, end_time in active_loas:
+        member = interaction.guild.get_member(int(user_id))
+        name = member.display_name if member else f"Unknown User ({user_id})"
+        
+        end_dt = datetime.fromtimestamp(end_time, tz=timezone.utc)
+        time_left = discord.utils.format_dt(end_dt, style='R')
+        
+        approver = f"<@{approved_by}>"
+        
+        embed.add_field(
+            name=name,
+            value=f"**Approved by:** {approver}\n**Ends:** {time_left}",
+            inline=False
+        )
+
+    embed.set_footer(text=f"Total on LOA: {len(active_loas)}")
+    embed.timestamp = datetime.now(zoneinfo.ZoneInfo("Europe/London"))
+
+    await interaction.followup.send(embed=embed)
 
 
 # ================== RUN BOT ==================
