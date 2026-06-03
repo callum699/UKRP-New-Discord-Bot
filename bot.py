@@ -22,8 +22,13 @@ if not TOKEN:
 OWNER_ID = 738790396511125654
 GUILD_ID = 1457118167078801631
 
-REQUEST_ROLE_IDS = [1460998934842441809, 1457118167204630725]
+REQUEST_ROLE_IDS = [1460998934842441809, 1457118167204630725, 1457118167108161540]
 ADMIN_ROLE_IDS = [1457118167204630728]
+
+LOA_TRACKER_ROLE_ID =  1457118167095841075
+
+INACTIVITY_WARNING_ROLE_ID = 1457118167091642440
+LOA_COOLDOWN_ROLE_ID = 1457118167108161545
 
 LOG_CHANNEL_ID = 1504537214829461677
 DB_NAME = "globalbans.db"
@@ -420,6 +425,11 @@ class LOARequestView(discord.ui.View):
         self.reason = reason
         self.length = length
 
+    def can_manage_loa(self, user: discord.Member) -> bool:
+        if user.id == OWNER_ID or any(role.id in ADMIN_ROLE_IDS for role in user.roles):
+            return True
+        return any(role.id == LOA_TRACKER_ROLE_ID for role in user.roles)
+
     async def disable_buttons(self):
         for item in self.children:
             item.disabled = True
@@ -427,11 +437,12 @@ class LOARequestView(discord.ui.View):
 
     @discord.ui.button(label="Approve LOA", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not is_admin(interaction.user):
-            await interaction.response.send_message("❌ Not allowed", ephemeral=True)
+        if not self.can_manage_loa(interaction.user):
+            await interaction.response.send_message("❌ You don't have permission to approve LOAs.", ephemeral=True)
             return
 
         await interaction.response.defer()
+
         guild = interaction.guild
         member = guild.get_member(self.requester.id)
         loa_role = guild.get_role(LOA_ROLE_ID)
@@ -444,12 +455,18 @@ class LOARequestView(discord.ui.View):
             except:
                 pass
 
+        # Update button text and disable
+        button.label = f"LOA Approved by {interaction.user.display_name}"
+        button.style = discord.ButtonStyle.green
+        button.disabled = True
+
         await self.disable_buttons()
+
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.green()
         embed.set_field_at(3, name="Status", value=f"Approved by {interaction.user.mention}", inline=False)
         embed.set_footer(text=f"UKRP LOA Request - approved • Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}")
-        
+
         if success:
             embed.add_field(name="Role Applied", value=loa_role.mention, inline=False)
 
@@ -457,11 +474,19 @@ class LOARequestView(discord.ui.View):
 
     @discord.ui.button(label="Deny LOA", style=discord.ButtonStyle.red)
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not is_admin(interaction.user):
-            await interaction.response.send_message("❌ Not allowed", ephemeral=True)
+        if not self.can_manage_loa(interaction.user):
+            await interaction.response.send_message("❌ You don't have permission to deny LOAs.", ephemeral=True)
             return
 
+        await interaction.response.defer()
+
+        # Update button text and disable
+        button.label = f"LOA Denied by {interaction.user.display_name}"
+        button.style = discord.ButtonStyle.red
+        button.disabled = True
+
         await self.disable_buttons()
+
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.red()
         embed.set_field_at(3, name="Status", value=f"Denied by {interaction.user.mention}", inline=False)
@@ -476,10 +501,23 @@ class LOARequestView(discord.ui.View):
     length="Length of LOA (e.g. 1 week, 2 weeks, 10 days)"
 )
 async def loarequest(interaction: discord.Interaction, reason: str, length: str):
+    member = interaction.guild.get_member(interaction.user.id)
+
+    # Check for restricted roles
+    if member:
+        if any(role.id == INACTIVITY_WARNING_ROLE_ID for role in member.roles):
+            await interaction.response.send_message("❌ You cannot request LOA while having an Inactivity Warning.", ephemeral=True)
+            return
+        if any(role.id == LOA_COOLDOWN_ROLE_ID for role in member.roles):
+            await interaction.response.send_message("❌ You are currently on LOA Cooldown and cannot request a new LOA.", ephemeral=True)
+            return
+
+    # Check permission to request
     if not has_request_role(interaction.user) and not is_admin(interaction.user):
         await interaction.response.send_message("❌ You cannot request LOAs", ephemeral=True)
         return
 
+    # Validate duration
     try:
         days = parse_loa_duration(length)
         if days < 7:
@@ -499,10 +537,9 @@ async def loarequest(interaction: discord.Interaction, reason: str, length: str)
     embed.add_field(name="Duration", value=length, inline=False)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.add_field(name="Status", value="Pending", inline=False)
-    embed.set_footer(text="UKRP LOA Request - pending")
+    embed.set_footer(text="UKRP LOA Request - Pending")
     embed.timestamp = datetime.now(zoneinfo.ZoneInfo("Europe/London"))
 
-    # Send in the SAME channel where the command was used
     view = LOARequestView(interaction.user, reason, length)
     await interaction.channel.send(embed=embed, view=view)
 
