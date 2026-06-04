@@ -26,6 +26,8 @@ REQUEST_ROLE_IDS = [1460998934842441809, 1457118167204630725, 145711816710816154
 ADMIN_ROLE_IDS = [1457118167204630728]
 LOA_TRACKER_ROLE_ID =  1457118167095841075
 
+DISCORD_RANKING_PERMISSIONS_ROLE_ID = 1457118167204630721
+
 LOA_LOG_CHANNEL_ID = 1511706584189767700
 
 INACTIVITY_WARNING_ROLE_ID = 1457118167091642440
@@ -652,6 +654,99 @@ async def activeloas(interaction: discord.Interaction):
     embed.timestamp = datetime.now(zoneinfo.ZoneInfo("Europe/London"))
 
     await interaction.followup.send(embed=embed)
+
+# ================== ROLE MANAGEMENT ==================
+
+@bot.tree.command(name="role add", description="Add a role to a user")
+@app_commands.describe(
+    user="The user to add the role to",
+    role="The role to add",
+    reason="Reason (required only when adding a role to yourself)"
+)
+async def role_add(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    role: discord.Role,
+    reason: str = None
+):
+    # Permission check - Only Discord Ranking Permissions role + Admins
+    if not is_admin(interaction.user) and not any(r.id == DISCORD_RANKING_PERMISSIONS_ROLE_ID for r in interaction.user.roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    # Require reason when adding role to yourself
+    if user.id == interaction.user.id and not reason:
+        await interaction.response.send_message(
+            "❌ You must provide a reason when adding a role to yourself.", 
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(thinking=True)
+
+    try:
+        if role in user.roles:
+            return await interaction.followup.send(f"❌ {user.mention} already has the role {role.mention}.")
+
+        await user.add_roles(role, reason=reason or f"Added by {interaction.user}")
+
+        embed = discord.Embed(color=discord.Color.green())
+        embed.add_field(
+            name="✅ Added Role",
+            value=f"Added {role.mention} to {user.mention}",
+            inline=False
+        )
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
+        embed.set_footer(text=f"Action by {interaction.user.display_name}")
+
+        await interaction.followup.send(embed=embed)
+
+    except discord.Forbidden:
+        await interaction.followup.send("❌ I don't have permission to manage that role.")
+    except Exception as e:
+        print(f"/role add error: {e}")
+        await interaction.followup.send("❌ Something went wrong.")
+
+
+@bot.tree.command(name="role remove", description="Remove a role from a user")
+@app_commands.describe(
+    user="The user to remove the role from",
+    role="The role to remove"
+)
+async def role_remove(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    role: discord.Role
+):
+    # Permission check - Only Discord Ranking Permissions role + Admins
+    if not is_admin(interaction.user) and not any(r.id == DISCORD_RANKING_PERMISSIONS_ROLE_ID for r in interaction.user.roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+
+    try:
+        if role not in user.roles:
+            return await interaction.followup.send(f"❌ {user.mention} does not have the role {role.mention}.")
+
+        await user.remove_roles(role, reason=f"Removed by {interaction.user}")
+
+        embed = discord.Embed(color=discord.Color.red())
+        embed.add_field(
+            name="❌ Removed Role",
+            value=f"Removed {role.mention} from {user.mention}",
+            inline=False
+        )
+        embed.set_footer(text=f"Action by {interaction.user.display_name}")
+
+        await interaction.followup.send(embed=embed)
+
+    except discord.Forbidden:
+        await interaction.followup.send("❌ I don't have permission to manage that role.")
+    except Exception as e:
+        print(f"/role remove error: {e}")
+        await interaction.followup.send("❌ Something went wrong.")
 
 
 # ================== RUN BOT ==================
