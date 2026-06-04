@@ -224,10 +224,10 @@ async def on_ready():
     await setup_db()
     bot.loop.create_task(temp_role_cleanup_loop())
     bot.loop.create_task(loa_cleanup_loop())
-    guild = discord.Object(id=GUILD_ID)
-    bot.tree.copy_global_to(guild=guild)
-    await bot.tree.sync(guild=guild)
-    print(f"✅ Logged in as {bot.user}")
+    
+    # Global sync - makes commands available in ALL servers
+    await bot.tree.sync()
+    print("✅ Slash commands synced globally")
 
 async def temp_role_cleanup_loop():
     await bot.wait_until_ready()
