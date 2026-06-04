@@ -227,9 +227,20 @@ async def on_ready():
     bot.loop.create_task(temp_role_cleanup_loop())
     bot.loop.create_task(loa_cleanup_loop())
     
-    # Global sync - makes commands available in ALL servers
+    print(f"✅ Logged in as {bot.user} ({bot.user.id})")
+    print(f"✅ Bot is in {len(bot.guilds)} servers")
+
+    # 1. Clear old guild-specific commands from your main guild
+    guild = discord.Object(id=GUILD_ID)
+    bot.tree.clear_commands(guild=guild)
+    await bot.tree.sync(guild=guild)
+    print("✅ Cleared old guild-specific commands")
+
+    # 2. Sync all commands globally (available in ALL servers)
     await bot.tree.sync()
-    print("✅ Slash commands synced globally")
+    print("✅ Synced all commands globally")
+
+    print("✅ Bot is ready!")
 
 async def temp_role_cleanup_loop():
     await bot.wait_until_ready()
