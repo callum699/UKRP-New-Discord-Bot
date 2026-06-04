@@ -230,15 +230,22 @@ async def on_ready():
     print(f"✅ Logged in as {bot.user} ({bot.user.id})")
     print(f"✅ Bot is in {len(bot.guilds)} servers")
 
-    # 1. Clear old guild-specific commands from your main guild
+    # === AGGRESSIVE CLEANUP ===
+    
+    # 1. Clear commands from the specific guild that's showing duplicates
     guild = discord.Object(id=GUILD_ID)
     bot.tree.clear_commands(guild=guild)
     await bot.tree.sync(guild=guild)
-    print("✅ Cleared old guild-specific commands")
+    print(f"✅ Cleared guild commands from {GUILD_ID}")
 
-    # 2. Sync all commands globally (available in ALL servers)
+    # 2. Also clear global commands first (to remove old cached ones)
+    bot.tree.clear_commands()
     await bot.tree.sync()
-    print("✅ Synced all commands globally")
+    print("✅ Cleared all global commands")
+
+    # 3. Re-sync everything globally
+    await bot.tree.sync()
+    print("✅ Re-synced all commands globally")
 
     print("✅ Bot is ready!")
 
