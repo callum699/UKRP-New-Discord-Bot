@@ -19,10 +19,11 @@ if not TOKEN:
     raise ValueError("❌ DISCORD_TOKEN not found")
 
 # ================== CONFIG ==================
-OWNER_ID = 738790396511125654
+OWNER_ID = (738790396511125654, 371627538923126791)
 GUILD_ID = 1457118167078801631
 
 REQUEST_ROLE_IDS = [1460998934842441809, 1457118167204630725, 1457118167108161540]
+GLOBALBAN_REQUEST_ROLE_IDS = [1460998934842441809, 1457118167204630725]
 ADMIN_ROLE_IDS = [1457118167204630728]
 LOA_TRACKER_ROLE_ID =  1457118167095841075
 
@@ -283,7 +284,9 @@ async def globalban(interaction: discord.Interaction, user: discord.User, reason
     if interaction.user.id != OWNER_ID and not is_admin(interaction.user):
         await interaction.response.send_message("❌ Not allowed", ephemeral=True)
         return
+
     await interaction.response.defer()
+
     success = 0
     try:
         await add_global_ban(user.id, reason)
@@ -295,32 +298,60 @@ async def globalban(interaction: discord.Interaction, user: discord.User, reason
                 pass
     except Exception as e:
         print(f"❌ Error during globalban: {e}")
+
+    # === LOG TO LOG CHANNEL ===
+    log_channel = bot.get_channel(LOG_CHANNEL_ID)
+    if log_channel:
+        embed = discord.Embed(title="🔨 Global Ban Executed", color=discord.Color.red())
+        embed.add_field(name="Target User", value=f"{user} (`{user.id}`)", inline=False)
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(name="Banned In", value=f"{success} servers", inline=True)
+        embed.add_field(name="Executed By", value=f"{interaction.user} (`{interaction.user.id}`)", inline=False)
+        embed.timestamp = datetime.now(zoneinfo.ZoneInfo("Europe/London"))
+        await log_channel.send(embed=embed)
+
     await interaction.followup.send(f"✅ Banned in {success} guilds")
 
 @bot.tree.command(name="unglobalban", description="Unban a user globally")
-async def unglobalban(interaction: discord.Interaction, user: discord.User):
+@app_commands.describe(user="User to unban", reason="Reason for unban (optional)")
+async def unglobalban(interaction: discord.Interaction, user: discord.User, reason: str = "No reason provided"):
     if interaction.user.id != OWNER_ID and not is_admin(interaction.user):
         await interaction.response.send_message("❌ Not allowed", ephemeral=True)
         return
+
     await interaction.response.defer()
+
     success = 0
     try:
         await remove_global_ban(user.id)
         for guild in bot.guilds:
             try:
-                await guild.unban(user)
+                await guild.unban(user, reason=reason)
                 success += 1
             except:
                 pass
     except Exception as e:
         print(f"❌ Error during unglobalban: {e}")
+
+    # === LOG TO LOG CHANNEL ===
+    log_channel = bot.get_channel(LOG_CHANNEL_ID)
+    if log_channel:
+        embed = discord.Embed(title="🔓 Global Unban Executed", color=discord.Color.green())
+        embed.add_field(name="Target User", value=f"{user} (`{user.id}`)", inline=False)
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(name="Unbanned In", value=f"{success} servers", inline=True)
+        embed.add_field(name="Executed By", value=f"{interaction.user} (`{interaction.user.id}`)", inline=False)
+        embed.timestamp = datetime.now(zoneinfo.ZoneInfo("Europe/London"))
+        await log_channel.send(embed=embed)
+
     await interaction.followup.send(f"✅ Unbanned in {success} guilds")
 
 @bot.tree.command(name="globalbanrequest", description="Request a global ban")
 @app_commands.describe(user="User to ban", reason="Reason")
 async def globalbanrequest(interaction: discord.Interaction, user: discord.User, reason: str):
-    if not has_request_role(interaction.user) and interaction.user.id != OWNER_ID:
-        await interaction.response.send_message("❌ You cannot request bans", ephemeral=True)
+    # Only allow specific roles for global ban requests
+    if not any(role.id in GLOBALBAN_REQUEST_ROLE_IDS for role in interaction.user.roles) and interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("❌ You cannot request global bans", ephemeral=True)
         return
     await interaction.response.send_message("✅ Request sent", ephemeral=True)
     embed = discord.Embed(title="📩 Global Ban Request", color=discord.Color.orange())
