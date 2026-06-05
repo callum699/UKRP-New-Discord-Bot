@@ -750,8 +750,14 @@ async def role(
 
             await user.add_roles(role, reason=reason or f"Added by {interaction.user}")
 
-            # Simple success message (like screenshot 1)
-            await interaction.followup.send(f"✅ Added {role.mention} to {user.mention}.")
+            # Clean embed (like screenshot 2)
+            embed = discord.Embed(color=discord.Color.green())
+            embed.add_field(
+                name="✅ Added Role",
+                value=f"Added {role.mention} to {user.mention}.",
+                inline=False
+            )
+            await interaction.followup.send(embed=embed)
 
         elif action == "remove":
             if role not in user.roles:
@@ -759,8 +765,14 @@ async def role(
 
             await user.remove_roles(role, reason=f"Removed by {interaction.user}")
 
-            # Simple success message (like screenshot 2)
-            await interaction.followup.send(f"❌ Removed {role.mention} from {user.mention}.")
+            # Clean embed (like screenshot 3)
+            embed = discord.Embed(color=discord.Color.red())
+            embed.add_field(
+                name="❌ Removed Role",
+                value=f"Removed {role.mention} from {user.mention}.",
+                inline=False
+            )
+            await interaction.followup.send(embed=embed)
 
     except discord.Forbidden:
         await interaction.followup.send("❌ I don't have permission to manage that role.")
