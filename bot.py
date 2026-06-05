@@ -290,16 +290,19 @@ async def globalban(interaction: discord.Interaction, user: discord.User, reason
     success = 0
     try:
         await add_global_ban(user.id, reason)
+
         for guild in bot.guilds:
             try:
-                await guild.ban(user, reason=reason)
+                # Prepend "Global Ban - " so it shows clearly in Discord's ban list & audit log
+                await guild.ban(user, reason=f"Global Ban - {reason}")
                 success += 1
             except:
                 pass
+
     except Exception as e:
         print(f"❌ Error during globalban: {e}")
 
-    # === LOG TO LOG CHANNEL ===
+    # Log to LOG_CHANNEL_ID
     log_channel = bot.get_channel(LOG_CHANNEL_ID)
     if log_channel:
         embed = discord.Embed(title="🔨 Global Ban Executed", color=discord.Color.red())
