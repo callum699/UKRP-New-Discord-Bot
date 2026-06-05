@@ -91,10 +91,11 @@ class GlobalBanRequestView(discord.ui.View):
 
         await add_global_ban(self.target_user.id, self.reason)
 
-        # Update embed
+        # Update embed with number of servers banned in
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.red()
         embed.add_field(name="✅ Accepted By", value=f"{interaction.user.mention}", inline=False)
+        embed.add_field(name="Banned In", value=f"{success} servers", inline=True)
 
         # Remove both buttons and add only "Accepted by" button
         self.clear_items()
