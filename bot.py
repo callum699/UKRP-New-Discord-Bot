@@ -753,7 +753,6 @@ async def role(
             # Clean embed (like screenshot 2)
             embed = discord.Embed(color=discord.Color.green())
             embed.add_field(
-                name="✅ Added Role",
                 value=f"Added {role.mention} to {user.mention}.",
                 inline=False
             )
@@ -768,7 +767,6 @@ async def role(
             # Clean embed (like screenshot 3)
             embed = discord.Embed(color=discord.Color.red())
             embed.add_field(
-                name="❌ Removed Role",
                 value=f"Removed {role.mention} from {user.mention}.",
                 inline=False
             )
