@@ -26,13 +26,13 @@ REQUEST_ROLE_IDS = [1460998934842441809, 1457118167204630725, 145711816710816154
 GLOBALBAN_REQUEST_ROLE_IDS = [1460998934842441809, 1457118167204630725]
 ADMIN_ROLE_IDS = [1457118167204630728]
 LOA_TRACKER_ROLE_ID =  1457118167095841075
-
-LOA_LOG_CHANNEL_ID = 1511706584189767700
-
+DISCORD_RANKING_PERMISSIONS_ROLE_ID = 1457118167204630721
 INACTIVITY_WARNING_ROLE_ID = 1457118167091642440
 LOA_COOLDOWN_ROLE_ID = 1457118167108161545
 
+LOA_LOG_CHANNEL_ID = 1511706584189767700
 LOG_CHANNEL_ID = 1504537214829461677
+
 DB_NAME = "globalbans.db"
 
 # ================== PERMISSION HELPERS ==================
@@ -705,6 +705,82 @@ async def activeloas(interaction: discord.Interaction):
     embed.timestamp = datetime.now(zoneinfo.ZoneInfo("Europe/London"))
 
     await interaction.followup.send(embed=embed)
+
+# ================== ROLE MANAGEMENT ==================
+
+@bot.tree.command(name="role", description="Add or remove a role from a user")
+@app_commands.describe(
+    action="add or remove",
+    user="The user to modify",
+    role="The role to add or remove",
+    reason="Reason (required only when adding a role to yourself)"
+)
+@app_commands.choices(action=[
+    app_commands.Choice(name="Add", value="add"),
+    app_commands.Choice(name="Remove", value="remove")
+])
+async def role(
+    interaction: discord.Interaction,
+    action: str,
+    user: discord.Member,
+    role: discord.Role,
+    reason: str = None
+):
+    # Permission check - Only "discord ranking permissions" role + Admins
+    if not is_admin(interaction.user) and not any(r.id == DISCORD_RANKING_PERMISSIONS_ROLE_ID for r in interaction.user.roles):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    action = action.lower()
+
+    # Require reason when adding role to yourself
+    if action == "add" and user.id == interaction.user.id and not reason:
+        await interaction.response.send_message(
+            "❌ You must provide a reason when adding a role to yourself.",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(thinking=True)
+
+    try:
+        if action == "add":
+            if role in user.roles:
+                return await interaction.followup.send(f"❌ {user.mention} already has the role {role.mention}.")
+
+            await user.add_roles(role, reason=reason or f"Added by {interaction.user}")
+
+            embed = discord.Embed(color=discord.Color.green())
+            embed.add_field(
+                name="✅ Added Role",
+                value=f"Added {role.mention} to {user.mention}",
+                inline=False
+            )
+            if reason:
+                embed.add_field(name="Reason", value=reason, inline=False)
+            embed.set_footer(text=f"Action by {interaction.user.display_name}")
+            await interaction.followup.send(embed=embed)
+
+        elif action == "remove":
+            if role not in user.roles:
+                return await interaction.followup.send(f"❌ {user.mention} does not have the role {role.mention}.")
+
+            await user.remove_roles(role, reason=f"Removed by {interaction.user}")
+
+            embed = discord.Embed(color=discord.Color.red())
+            embed.add_field(
+                name="❌ Removed Role",
+                value=f"Removed {role.mention} from {user.mention}",
+                inline=False
+            )
+            embed.set_footer(text=f"Action by {interaction.user.display_name}")
+            await interaction.followup.send(embed=embed)
+
+    except discord.Forbidden:
+        await interaction.followup.send("❌ I don't have permission to manage that role.")
+    except Exception as e:
+        print(f"Role command error: {e}")
+        await interaction.followup.send("❌ Something went wrong.")
 
 
 # ================== RUN BOT ==================
