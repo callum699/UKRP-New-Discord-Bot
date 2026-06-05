@@ -26,9 +26,25 @@ REQUEST_ROLE_IDS = [1460998934842441809, 1457118167204630725, 145711816710816154
 GLOBALBAN_REQUEST_ROLE_IDS = [1460998934842441809, 1457118167204630725]
 ADMIN_ROLE_IDS = [1457118167204630728]
 LOA_TRACKER_ROLE_ID =  1457118167095841075
-DISCORD_RANKING_PERMISSIONS_ROLE_ID = 1457118167204630721
 INACTIVITY_WARNING_ROLE_ID = 1457118167091642440
 LOA_COOLDOWN_ROLE_ID = 1457118167108161545
+
+# Roles allowed to use /role command per guild
+ROLE_COMMAND_ALLOWED_ROLES = {
+    1452412377034264576: [          # Guild 1
+        "UK:RP | Owner",
+        "UK:RP | Co-Owner",
+        "UK:RP | Community Manager",
+        "UK:RP | Management Team",
+        "UK:RP | Trial Management"
+    ],
+    1457403990433206344: [          # Guild 2
+        "RTO Ranking Permissions"
+    ],
+    1457118167078801631: [          # Guild 3 (Main)
+        "● Discord Ranking Permissions ●"
+    ]
+}
 
 LOA_LOG_CHANNEL_ID = 1511706584189767700
 LOG_CHANNEL_ID = 1504537214829461677
@@ -43,6 +59,23 @@ def is_admin(user):
     if user.id == OWNER_IDS:
         return True
     return any(role.id in ADMIN_ROLE_IDS for role in user.roles)
+
+def can_manage_roles(user: discord.Member, guild: discord.Guild) -> bool:
+    """Check if user can use /role command based on guild"""
+    # Always allow Owners and Admins
+    if is_admin(user):
+        return True
+
+    # Get the list of allowed role names for this guild
+    allowed_role_names = ROLE_COMMAND_ALLOWED_ROLES.get(guild.id, [])
+
+    # Check if the user has any of the allowed roles in this guild
+    for role_name in allowed_role_names:
+        role = discord.utils.get(guild.roles, name=role_name)
+        if role and role in user.roles:
+            return True
+
+    return False
 
 # ================== DURATION PARSER ==================
 def parse_duration(duration: str) -> int:
@@ -727,7 +760,7 @@ async def role(
     reason: str = None
 ):
     # Permission check - Only "discord ranking permissions" role + Admins
-    if not is_admin(interaction.user) and not any(r.id == DISCORD_RANKING_PERMISSIONS_ROLE_ID for r in interaction.user.roles):
+    if not can_manage_roles(interaction.user, interaction.guild):
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
