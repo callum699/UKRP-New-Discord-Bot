@@ -73,16 +73,14 @@ class GlobalBanRequestView(discord.ui.View):
         self.reason = reason
         self.requester = requester
 
-    async def disable_buttons(self):
-        for item in self.children:
-            item.disabled = True
-
-    @discord.ui.button(label="✅ Accept", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="Accept", style=discord.ButtonStyle.green)
     async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not is_admin(interaction.user):
             await interaction.response.send_message("❌ Not allowed", ephemeral=True)
             return
+
         await interaction.response.defer()
+
         success = 0
         for guild in interaction.client.guilds:
             try:
@@ -90,25 +88,45 @@ class GlobalBanRequestView(discord.ui.View):
                 success += 1
             except:
                 pass
+
         await add_global_ban(self.target_user.id, self.reason)
-        await self.disable_buttons()
+
+        # Update embed
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.red()
-        embed.add_field(name="✅ Accepted By", value=f"{interaction.user} (`{interaction.user.id}`)", inline=False)
-        embed.timestamp = discord.utils.utcnow()
+        embed.add_field(name="✅ Accepted By", value=f"{interaction.user.mention}", inline=False)
+
+        # Remove both buttons and add only "Accepted by" button
+        self.clear_items()
+        self.add_item(discord.ui.Button(
+            label=f"Accepted by {interaction.user.display_name}",
+            style=discord.ButtonStyle.green,
+            disabled=True
+        ))
+
         await interaction.message.edit(embed=embed, view=self)
 
-    @discord.ui.button(label="❌ Deny", style=discord.ButtonStyle.red)
+    @discord.ui.button(label="Deny", style=discord.ButtonStyle.red)
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not is_admin(interaction.user):
             await interaction.response.send_message("❌ Not allowed", ephemeral=True)
             return
-        await self.disable_buttons()
+
+        await interaction.response.defer()
+
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.greyple()
-        embed.add_field(name="❌ Denied By", value=f"{interaction.user} (`{interaction.user.id}`)", inline=False)
-        embed.timestamp = discord.utils.utcnow()
-        await interaction.response.edit_message(embed=embed, view=self)
+        embed.add_field(name="❌ Denied By", value=f"{interaction.user.mention}", inline=False)
+
+        # Remove both buttons and add only "Denied by" button
+        self.clear_items()
+        self.add_item(discord.ui.Button(
+            label=f"Denied by {interaction.user.display_name}",
+            style=discord.ButtonStyle.red,
+            disabled=True
+        ))
+
+        await interaction.message.edit(embed=embed, view=self)
 
 # ================== DATABASE ==================
 async def setup_db():
