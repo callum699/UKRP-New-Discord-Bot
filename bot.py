@@ -19,7 +19,7 @@ if not TOKEN:
     raise ValueError("❌ DISCORD_TOKEN not found")
 
 # ================== CONFIG ==================
-OWNER_ID = (738790396511125654, 371627538923126791)
+OWNER_IDS = [738790396511125654, 371627538923126791]
 GUILD_ID = 1457118167078801631
 
 REQUEST_ROLE_IDS = [1460998934842441809, 1457118167204630725, 1457118167108161540]
@@ -40,7 +40,7 @@ def has_request_role(user):
     return any(role.id in REQUEST_ROLE_IDS for role in user.roles)
 
 def is_admin(user):
-    if user.id == OWNER_ID:
+    if user.id == OWNER_IDS:
         return True
     return any(role.id in ADMIN_ROLE_IDS for role in user.roles)
 
@@ -281,7 +281,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 @bot.tree.command(name="globalban", description="Ban a user from all guilds")
 @app_commands.describe(user="User to ban", reason="Reason for ban")
 async def globalban(interaction: discord.Interaction, user: discord.User, reason: str = "No reason provided"):
-    if interaction.user.id != OWNER_ID and not is_admin(interaction.user):
+    if interaction.user.id not in OWNER_IDS and not is_admin(interaction.user):
         await interaction.response.send_message("❌ Not allowed", ephemeral=True)
         return
 
@@ -315,7 +315,7 @@ async def globalban(interaction: discord.Interaction, user: discord.User, reason
 @bot.tree.command(name="unglobalban", description="Unban a user globally")
 @app_commands.describe(user="User to unban", reason="Reason for unban (optional)")
 async def unglobalban(interaction: discord.Interaction, user: discord.User, reason: str = "No reason provided"):
-    if interaction.user.id != OWNER_ID and not is_admin(interaction.user):
+    if interaction.user.id not in OWNER_IDS and not is_admin(interaction.user):
         await interaction.response.send_message("❌ Not allowed", ephemeral=True)
         return
 
@@ -350,7 +350,7 @@ async def unglobalban(interaction: discord.Interaction, user: discord.User, reas
 @app_commands.describe(user="User to ban", reason="Reason")
 async def globalbanrequest(interaction: discord.Interaction, user: discord.User, reason: str):
     # Only allow specific roles for global ban requests
-    if not any(role.id in GLOBALBAN_REQUEST_ROLE_IDS for role in interaction.user.roles) and interaction.user.id != OWNER_ID:
+    if not any(role.id in GLOBALBAN_REQUEST_ROLE_IDS for role in interaction.user.roles) and interaction.user.id != OWNER_IDS:
         await interaction.response.send_message("❌ You cannot request global bans", ephemeral=True)
         return
     await interaction.response.send_message("✅ Request sent", ephemeral=True)
@@ -521,7 +521,7 @@ class LOARequestView(discord.ui.View):
         self.length = length
 
     def can_manage_loa(self, user: discord.Member) -> bool:
-        if user.id == OWNER_ID or any(role.id in ADMIN_ROLE_IDS for role in user.roles):
+        if user.id in OWNER_IDS or any(role.id in ADMIN_ROLE_IDS for role in user.roles):
             return True
         return any(role.id == LOA_TRACKER_ROLE_ID for role in user.roles)
 
