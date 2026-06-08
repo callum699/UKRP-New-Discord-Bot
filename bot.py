@@ -90,12 +90,15 @@ def parse_duration(duration: str) -> int:
     return 0
 
 def parse_loa_duration(duration: str) -> int:
-    duration = duration.lower()
+    """Convert '7 days', '2 weeks', '4 weeks' etc. into number of days"""
+    duration = duration.lower().strip()
+
+    # Extract the number
+    num = int(''.join(filter(str.isdigit, duration)) or 1)
+
     if "week" in duration:
-        num = int(''.join(filter(str.isdigit, duration)) or 1)
         return num * 7
     else:
-        num = int(''.join(filter(str.isdigit, duration)) or 1)
         return num
 
 # ================== VIEWS ==================
@@ -690,14 +693,16 @@ async def loarequest(interaction: discord.Interaction, reason: str, length: str)
     # Validate duration
     try:
         days = parse_loa_duration(length)
+
         if days < 7:
             await interaction.response.send_message("❌ Minimum LOA is 7 days.", ephemeral=True)
             return
         if days > 28:
             await interaction.response.send_message("❌ Maximum LOA is 4 weeks (28 days).", ephemeral=True)
             return
+
     except:
-        await interaction.response.send_message("❌ Invalid format. Use: `1 week`, `10 days`, `3 weeks`", ephemeral=True)
+        await interaction.response.send_message("❌ Invalid format. Use: `7 days`, `2 weeks`, `10 days`, `4 weeks`", ephemeral=True)
         return
 
     await interaction.response.send_message("✅ LOA request submitted!", ephemeral=True)
