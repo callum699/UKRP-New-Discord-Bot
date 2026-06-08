@@ -592,11 +592,26 @@ class LOARequestView(discord.ui.View):
         member = guild.get_member(self.requester.id)
         loa_role = guild.get_role(LOA_ROLE_ID)
 
+        # Calculate when the LOA should end
+        days = parse_loa_duration(self.length)
+        end_time = int(time.time()) + (days * 86400)
+
         if member and loa_role:
             try:
                 await member.add_roles(loa_role, reason=f"LOA Approved • {self.length}")
-            except:
-                pass
+
+                # === THIS IS THE MISSING PART ===
+                # Save the LOA to the database so /activeloas can see it
+                async with aiosqlite.connect(DB_NAME) as db:
+                    await db.execute("""INSERT OR REPLACE INTO active_loas 
+                        (user_id, approved_by, start_time, end_time, reason, length)
+                        VALUES (?, ?, ?, ?, ?, ?)""",
+                        (str(self.requester.id), str(interaction.user.id), 
+                         int(time.time()), end_time, self.reason, self.length))
+                    await db.commit()
+
+            except Exception as e:
+                print(f"LOA approve error: {e}")
 
         # Update main embed
         embed = interaction.message.embeds[0]
