@@ -191,15 +191,14 @@ async def restore_from_backup(member: discord.Member, backup_type: str, special_
         return "✅ Disciplinary role removed. No roles could be restored from backup."
 
 async def remove_cross_guild_roles(user_id: int):
-    """Remove specific roles from the user in the Radio Traffic server"""
+    """Remove the listed roles from the user in the Radio Traffic server"""
     other_guild = bot.get_guild(RADIO_TRAFFIC_GUILD_ID)
     if not other_guild:
-        print("[Cross-Guild] Radio Traffic guild not found.")
+        print("[Cross-Guild] Radio Traffic guild not found or bot is not in it.")
         return
 
     other_member = other_guild.get_member(user_id)
     if not other_member:
-        # Try fetching if not cached
         try:
             other_member = await other_guild.fetch_member(user_id)
         except discord.NotFound:
@@ -208,18 +207,18 @@ async def remove_cross_guild_roles(user_id: int):
             print(f"[Cross-Guild] Error fetching member: {e}")
             return
 
-    roles_removed = []
+    removed = []
     for role_id in CROSS_GUILD_ROLES_TO_REMOVE:
         role = other_guild.get_role(role_id)
         if role and role in other_member.roles:
             try:
                 await other_member.remove_roles(role, reason="Police Disciplinary Action (cross-guild)")
-                roles_removed.append(role.name)
+                removed.append(role.name)
             except Exception as e:
-                print(f"[Cross-Guild] Failed to remove {role.name}: {e}")
+                print(f"[Cross-Guild] Failed to remove {role.name} from {user_id}: {e}")
 
-    if roles_removed:
-        print(f"[Cross-Guild] Removed from user {user_id}: {roles_removed}")
+    if removed:
+        print(f"[Cross-Guild] Removed from {user_id} in Radio Traffic Discord: {removed}")
 
 async def restore_cross_guild_roles(user_id: int, backup_type: str):
     """Restore roles in the Radio Traffic server from backup"""
@@ -317,7 +316,8 @@ async def apply_police_disciplinary(
             await member.add_roles(target_role, reason=f"Police Removal - {target_role.name}")
             await add_temp_role(member.id, guild.id, target_role.id, expires_at, interaction.user.id)
             role_text = f"{target_role.mention} (Temporary - {duration})"
-            await remove_cross_guild_roles(member.id)
+            
+        await remove_cross_guild_roles(member.id)
 
         embed = discord.Embed(title=embed_title, color=embed_color)
         embed.add_field(name="Target User", value=f"{member.mention} (`{member.id}`)", inline=False)
@@ -1134,7 +1134,7 @@ async def removeblacklist(interaction: discord.Interaction, user: discord.Member
     embed = discord.Embed(title="Police Blacklist Removed", color=discord.Color.green())
     embed.add_field(name="Target User", value=f"{user.mention} (`{user.id}`)", inline=False)
     embed.add_field(name="Main Server", value=main_result, inline=False)
-    embed.add_field(name="Radio Traffic Server", value="Roles restored (if backup existed)", inline=False)
+    embed.add_field(name="Radio Traffic Discord", value="Roles restored (if backup existed)", inline=False)
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
 
@@ -1157,7 +1157,7 @@ async def removepoliceremoval(interaction: discord.Interaction, user: discord.Me
     embed = discord.Embed(title="Police Removal Reversed", color=discord.Color.green())
     embed.add_field(name="Target User", value=f"{user.mention} (`{user.id}`)", inline=False)
     embed.add_field(name="Main Server", value=main_result, inline=False)
-    embed.add_field(name="Radio Traffic Server", value="Roles restored (if backup existed)", inline=False)
+    embed.add_field(name="Radio Traffic Discord", value="Roles restored (if backup existed)", inline=False)
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
 
