@@ -139,6 +139,13 @@ async def save_role_backup(member: discord.Member, backup_type: str):
             main_role_ids = [str(r.id) for r in main_member.roles if r != main_guild.default_role]
             await _save_backup_to_db(str(member.id), str(main_guild.id), backup_type, ",".join(main_role_ids))
 
+async def delete_role_backup(user_id: int, guild_id: int, backup_type: str):
+    """Delete the role backup after successful restoration"""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""DELETE FROM role_backups 
+                            WHERE user_id = ? AND guild_id = ? AND backup_type = ?""",
+                         (str(user_id), str(guild_id), backup_type))
+        await db.commit()
 
 async def _save_backup_to_db(user_id: str, guild_id: str, backup_type: str, roles_str: str):
     async with aiosqlite.connect(DB_NAME) as db:
@@ -150,7 +157,7 @@ async def _save_backup_to_db(user_id: str, guild_id: str, backup_type: str, role
 
 
 async def restore_from_backup(member: discord.Member, backup_type: str, special_role_id: int):
-    """Remove the special role and restore ALL previous roles (including headers)"""
+    """Remove special role and restore previous roles (Main Guild)"""
     guild = member.guild
     special_role = guild.get_role(special_role_id)
     bot_top_role = guild.me.top_role
@@ -166,40 +173,41 @@ async def restore_from_backup(member: discord.Member, backup_type: str, special_
         ) as cursor:
             row = await cursor.fetchone()
 
-    # 1. Remove the special disciplinary role first
+    # Remove special role
     if special_role and special_role in member.roles:
         await member.remove_roles(special_role, reason=f"Removed {backup_type}")
 
     roles_added = []
 
     if row and row[0]:
-        # Get all role IDs from the backup
         previous_role_ids = [int(rid) for rid in row[0].split(",") if rid.strip()]
 
         for rid in previous_role_ids:
             role = guild.get_role(rid)
             if role and role != special_role:
-                # Only add roles the bot can manage
                 if role.position < bot_top_role.position:
                     roles_added.append(role)
 
-    # Always make sure verification roles are present
+    # Always ensure verification roles
     if ver_header and ver_header not in roles_added and ver_header.position < bot_top_role.position:
         roles_added.append(ver_header)
     if verified and verified not in roles_added and verified.position < bot_top_role.position:
         roles_added.append(verified)
 
-    # Add all roles back
     if roles_added:
         try:
             await member.add_roles(*roles_added, reason=f"Restored roles after {backup_type} removal")
         except Exception as e:
-            print(f"[Restore Error] {e}")
+            print(f"[Main Guild Restore Error] {e}")
+
+    # === DELETE BACKUP AFTER SUCCESSFUL RESTORE ===
+    if roles_added or True:   # Delete even if no roles were added (cleanup)
+        await delete_role_backup(member.id, guild.id, backup_type)
 
     if roles_added:
-        return f"✅ Disciplinary role removed and previous roles restored ({len(roles_added)} roles added)."
+        return f"✅ Disciplinary role removed and previous roles restored ({len(roles_added)} roles)."
     else:
-        return "✅ Disciplinary role removed. No roles could be restored from backup."
+        return "✅ Disciplinary role removed. No previous roles found in backup."
 
 async def remove_cross_guild_roles(user_id: int):
     """Remove specific roles from the user in Radio Traffic + Main Server"""
@@ -231,7 +239,7 @@ async def remove_cross_guild_roles(user_id: int):
 
 
 async def restore_cross_guild_roles(user_id: int, backup_type: str):
-    """Restore previous roles in Radio Traffic Server + Main Server"""
+    """Restore previous roles in Radio Traffic Server + Main Server + delete backup"""
     guilds_to_restore = {
         RADIO_TRAFFIC_GUILD_ID: CROSS_GUILD_ROLES_TO_REMOVE,
         MAIN_SERVER_GUILD_ID: [MAIN_SERVER_ROLE_TO_MANAGE]
@@ -249,7 +257,6 @@ async def restore_cross_guild_roles(user_id: int, backup_type: str):
             except:
                 continue
 
-        # Get saved roles for this guild
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute(
                 """SELECT previous_roles FROM role_backups 
@@ -259,7 +266,7 @@ async def restore_cross_guild_roles(user_id: int, backup_type: str):
                 row = await cursor.fetchone()
 
         if not row or not row[0]:
-            continue  # No backup for this guild
+            continue
 
         previous_role_ids = [int(rid) for rid in row[0].split(",") if rid.strip()]
         roles_to_add = []
@@ -272,6 +279,10 @@ async def restore_cross_guild_roles(user_id: int, backup_type: str):
         if roles_to_add:
             try:
                 await other_member.add_roles(*roles_to_add, reason=f"Restored roles after {backup_type} removal (cross-guild)")
+                
+                # === DELETE BACKUP AFTER SUCCESSFUL RESTORE ===
+                await delete_role_backup(user_id, guild_id, backup_type)
+                
             except Exception as e:
                 print(f"[Cross-Guild Restore Error] {other_guild.name}: {e}")
 
