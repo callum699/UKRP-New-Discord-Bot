@@ -1133,7 +1133,7 @@ async def removeblacklist(interaction: discord.Interaction, user: discord.Member
 
     embed = discord.Embed(title="Police Blacklist Removed", color=discord.Color.green())
     embed.add_field(name="Target User", value=f"{user.mention} (`{user.id}`)", inline=False)
-    embed.add_field(name="Main Server", value=main_result, inline=False)
+    embed.add_field(name="Police Server", value=main_result, inline=False)
     embed.add_field(name="Radio Traffic Discord", value="Roles restored (if backup existed)", inline=False)
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
@@ -1156,7 +1156,7 @@ async def removepoliceremoval(interaction: discord.Interaction, user: discord.Me
 
     embed = discord.Embed(title="Police Removal Reversed", color=discord.Color.green())
     embed.add_field(name="Target User", value=f"{user.mention} (`{user.id}`)", inline=False)
-    embed.add_field(name="Main Server", value=main_result, inline=False)
+    embed.add_field(name="Police Server", value=main_result, inline=False)
     embed.add_field(name="Radio Traffic Discord", value="Roles restored (if backup existed)", inline=False)
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
