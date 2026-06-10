@@ -95,12 +95,74 @@ def can_use_police_commands(user: discord.Member) -> bool:
         return True
     return any(role.id in POLICE_COMMAND_ROLE_IDS for role in user.roles)
 
+async def save_role_backup(member: discord.Member, backup_type: str):
+    """Save the user's current roles before stripping them"""
+    guild = member.guild
+    # Save all non-@everyone roles as comma-separated IDs
+    role_ids = [str(r.id) for r in member.roles if r != guild.default_role]
+    previous_roles_str = ",".join(role_ids)
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""INSERT OR REPLACE INTO role_backups 
+            (user_id, guild_id, backup_type, previous_roles, timestamp)
+            VALUES (?, ?, ?, ?, ?)""",
+            (str(member.id), str(guild.id), backup_type, previous_roles_str, int(time.time())))
+        await db.commit()
+
+
+async def restore_from_backup(member: discord.Member, backup_type: str, special_role_id: int):
+    """Remove the special role and restore previously saved roles"""
+    guild = member.guild
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("""SELECT previous_roles FROM role_backups 
+                                 WHERE user_id = ? AND guild_id = ? AND backup_type = ?""",
+                              (str(member.id), str(guild.id), backup_type)) as cursor:
+            row = await cursor.fetchone()
+
+    if not row:
+        await member.remove_roles(guild.get_role(special_role_id), reason=f"Removed {backup_type}")
+        # Fallback: at least give them verification roles
+        ver_header = guild.get_role(VERIFICATION_HEADER_ROLE_ID)
+        verified = guild.get_role(VERIFIED_ROLE_ID)
+        if ver_header: await member.add_roles(ver_header)
+        if verified: await member.add_roles(verified)
+        return "No previous roles found in backup. Only removed the special role."
+
+    previous_role_ids = [int(rid) for rid in row[0].split(",") if rid]
+
+    # Build list of role objects to restore
+    roles_to_restore = []
+    for rid in previous_role_ids:
+        role = guild.get_role(rid)
+        if role:
+            roles_to_restore.append(role)
+
+    # Remove the special role first
+    special_role = guild.get_role(special_role_id)
+    if special_role and special_role in member.roles:
+        await member.remove_roles(special_role, reason=f"Removed {backup_type}")
+
+    # Restore previous roles (using edit for cleanliness)
+    if roles_to_restore:
+        await member.edit(roles=roles_to_restore, reason=f"Restored roles after {backup_type} removal")
+
+    # Make sure verification roles are present
+    ver_header = guild.get_role(VERIFICATION_HEADER_ROLE_ID)
+    verified = guild.get_role(VERIFIED_ROLE_ID)
+    if ver_header and ver_header not in member.roles:
+        await member.add_roles(ver_header)
+    if verified and verified not in member.roles:
+        await member.add_roles(verified)
+
+    return "Roles successfully restored from backup."
+
 
 async def apply_police_disciplinary(
     interaction: discord.Interaction,
     member: discord.Member,
-    action: str,           # "blacklist" or "removal"
-    duration: str = None   # Only used for removal
+    action: str,
+    duration: str = None
 ):
     if not can_use_police_commands(interaction.user):
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
@@ -113,65 +175,60 @@ async def apply_police_disciplinary(
     verified = guild.get_role(VERIFIED_ROLE_ID)
 
     if action == "blacklist":
-        temp_role_id = POLICE_BARRED_LIST_ROLE_ID
+        target_role_id = POLICE_BARRED_LIST_ROLE_ID
         embed_title = "Police Blacklist Applied"
         embed_color = discord.Color.red()
         is_permanent = True
+        backup_type = "blacklist"
     else:
-        temp_role_id = REMOVAL_COOLDOWN_ROLE_ID
+        target_role_id = REMOVAL_COOLDOWN_ROLE_ID
         embed_title = "Police Removal Applied"
         embed_color = discord.Color.orange()
         is_permanent = False
+        backup_type = "removal"
 
-    target_role = guild.get_role(temp_role_id)
-
+    target_role = guild.get_role(target_role_id)
     if not ver_header or not verified or not target_role:
-        await interaction.followup.send("❌ One or more required roles are missing from the server.")
+        await interaction.followup.send("❌ Required roles not found in server.")
         return
 
     keep_roles = [ver_header, verified]
 
     try:
-        # Strip all other roles
+        # Save current roles BEFORE stripping
+        await save_role_backup(member, backup_type)
+
+        # Strip to only verification roles
         await member.edit(roles=keep_roles, reason=f"Police {action} by {interaction.user}")
 
         if is_permanent:
-            # === PERMANENT ROLE (Blacklist) ===
             await member.add_roles(target_role, reason=f"Police Blacklist - {target_role.name}")
             role_text = f"{target_role.mention} (Permanent)"
         else:
-            # === TEMPORARY ROLE (Removal) ===
             if not duration:
-                await interaction.followup.send("❌ Duration is required for police removal.")
+                await interaction.followup.send("❌ Duration is required.")
                 return
-
             seconds = parse_duration(duration)
             if seconds <= 0:
-                await interaction.followup.send("❌ Invalid duration format.")
+                await interaction.followup.send("❌ Invalid duration.")
                 return
-
             expires_at = int(time.time()) + seconds
             await member.add_roles(target_role, reason=f"Police Removal - {target_role.name}")
             await add_temp_role(member.id, guild.id, target_role.id, expires_at, interaction.user.id)
             role_text = f"{target_role.mention} (Temporary - {duration})"
 
-        # Confirmation embed
         embed = discord.Embed(title=embed_title, color=embed_color)
         embed.add_field(name="Target User", value=f"{member.mention} (`{member.id}`)", inline=False)
         embed.add_field(name="Role Given", value=role_text, inline=True)
-        embed.add_field(
-            name="Roles Updated",
-            value="All non-verification roles removed. Only kept Verification header + Verified role.",
-            inline=False
-        )
+        embed.add_field(name="Previous Roles", value="Saved for later restoration", inline=False)
         embed.set_footer(text=f"Action by {interaction.user.display_name}")
         embed.timestamp = discord.utils.utcnow()
 
         await interaction.followup.send(embed=embed)
 
     except Exception as e:
-        print(f"❌ Error in police {action} command: {e}")
-        await interaction.followup.send("❌ Something went wrong while processing the command.")
+        print(f"Error in police {action}: {e}")
+        await interaction.followup.send("❌ Something went wrong.")
 
 
 # ================== DURATION PARSER ==================
@@ -279,7 +336,24 @@ async def setup_db():
             length TEXT
         )""")
         await db.commit()
-        
+
+async def setup_db():
+    async with aiosqlite.connect(DB_NAME) as db:
+        # Existing tables...
+        await db.execute("""CREATE TABLE IF NOT EXISTS global_bans ...""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS temp_roles ...""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS active_loas ...""")
+
+        # NEW: Store previous roles so we can restore them later
+        await db.execute("""CREATE TABLE IF NOT EXISTS role_backups (
+            user_id TEXT,
+            guild_id TEXT,
+            backup_type TEXT,           -- 'blacklist' or 'removal'
+            previous_roles TEXT,        -- comma-separated role IDs
+            timestamp INTEGER,
+            PRIMARY KEY (user_id, guild_id, backup_type)
+        )""")
+        await db.commit()
 
 async def add_global_ban(user_id, reason):
     async with aiosqlite.connect(DB_NAME) as db:
@@ -932,6 +1006,40 @@ async def policeblacklist(interaction: discord.Interaction, user: discord.Member
 @app_commands.describe(user="Target user", duration="Duration (e.g. 7d, 30d, 2w)")
 async def policeremoval(interaction: discord.Interaction, user: discord.Member, duration: str):
     await apply_police_disciplinary(interaction, user, "removal", duration)
+
+
+@bot.tree.command(name="removeblacklist", description="Remove Police Barred List role and restore previous roles")
+@app_commands.describe(user="Target user")
+async def removeblacklist(interaction: discord.Interaction, user: discord.Member):
+    if not can_use_police_commands(interaction.user):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    result = await restore_from_backup(user, "blacklist", POLICE_BARRED_LIST_ROLE_ID)
+
+    embed = discord.Embed(title="Police Blacklist Removed", color=discord.Color.green())
+    embed.add_field(name="Target User", value=f"{user.mention} (`{user.id}`)", inline=False)
+    embed.add_field(name="Result", value=result, inline=False)
+    embed.set_footer(text=f"Action by {interaction.user.display_name}")
+    await interaction.followup.send(embed=embed)
+
+
+@bot.tree.command(name="removepoliceremoval", description="Remove Removal Cooldown role and restore previous roles")
+@app_commands.describe(user="Target user")
+async def removepoliceremoval(interaction: discord.Interaction, user: discord.Member):
+    if not can_use_police_commands(interaction.user):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    result = await restore_from_backup(user, "removal", REMOVAL_COOLDOWN_ROLE_ID)
+
+    embed = discord.Embed(title="Police Removal Reversed", color=discord.Color.green())
+    embed.add_field(name="Target User", value=f"{user.mention} (`{user.id}`)", inline=False)
+    embed.add_field(name="Result", value=result, inline=False)
+    embed.set_footer(text=f"Action by {interaction.user.display_name}")
+    await interaction.followup.send(embed=embed)
 
 
 # ================== RUN BOT ==================
