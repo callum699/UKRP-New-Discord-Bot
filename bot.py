@@ -111,51 +111,62 @@ async def save_role_backup(member: discord.Member, backup_type: str):
 
 
 async def restore_from_backup(member: discord.Member, backup_type: str, special_role_id: int):
-    """Remove the special role and restore previously saved roles"""
+    """Remove special role and restore previous roles if a backup exists"""
     guild = member.guild
-
-    async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute("""SELECT previous_roles FROM role_backups 
-                                 WHERE user_id = ? AND guild_id = ? AND backup_type = ?""",
-                              (str(member.id), str(guild.id), backup_type)) as cursor:
-            row = await cursor.fetchone()
-
-    if not row:
-        await member.remove_roles(guild.get_role(special_role_id), reason=f"Removed {backup_type}")
-        # Fallback: at least give them verification roles
-        ver_header = guild.get_role(VERIFICATION_HEADER_ROLE_ID)
-        verified = guild.get_role(VERIFIED_ROLE_ID)
-        if ver_header: await member.add_roles(ver_header)
-        if verified: await member.add_roles(verified)
-        return "No previous roles found in backup. Only removed the special role."
-
-    previous_role_ids = [int(rid) for rid in row[0].split(",") if rid]
-
-    # Build list of role objects to restore
-    roles_to_restore = []
-    for rid in previous_role_ids:
-        role = guild.get_role(rid)
-        if role:
-            roles_to_restore.append(role)
-
-    # Remove the special role first
     special_role = guild.get_role(special_role_id)
-    if special_role and special_role in member.roles:
-        await member.remove_roles(special_role, reason=f"Removed {backup_type}")
-
-    # Restore previous roles (using edit for cleanliness)
-    if roles_to_restore:
-        await member.edit(roles=roles_to_restore, reason=f"Restored roles after {backup_type} removal")
-
-    # Make sure verification roles are present
     ver_header = guild.get_role(VERIFICATION_HEADER_ROLE_ID)
     verified = guild.get_role(VERIFIED_ROLE_ID)
-    if ver_header and ver_header not in member.roles:
-        await member.add_roles(ver_header)
-    if verified and verified not in member.roles:
-        await member.add_roles(verified)
 
-    return "Roles successfully restored from backup."
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            """SELECT previous_roles FROM role_backups 
+               WHERE user_id = ? AND guild_id = ? AND backup_type = ?""",
+            (str(member.id), str(guild.id), backup_type)
+        ) as cursor:
+            row = await cursor.fetchone()
+
+    roles_restored = False
+
+    if row and row[0]:
+        # Backup exists → restore saved roles
+        previous_role_ids = [int(rid) for rid in row[0].split(",") if rid.strip()]
+        roles_to_restore = []
+        for rid in previous_role_ids:
+            role = guild.get_role(rid)
+            if role and role != special_role:   # don't re-add the special role
+                roles_to_restore.append(role)
+
+        # Remove the special role first
+        if special_role and special_role in member.roles:
+            await member.remove_roles(special_role, reason=f"Removed {backup_type}")
+
+        # Restore previous roles
+        if roles_to_restore:
+            try:
+                await member.edit(roles=roles_to_restore, reason=f"Restored roles after {backup_type} removal")
+                roles_restored = True
+            except Exception as e:
+                print(f"Error restoring roles: {e}")
+
+    else:
+        # No backup found → just remove the special role
+        if special_role and special_role in member.roles:
+            await member.remove_roles(special_role, reason=f"Removed {backup_type}")
+
+    # Always make sure verification roles are present
+    roles_to_add = []
+    if ver_header and ver_header not in member.roles:
+        roles_to_add.append(ver_header)
+    if verified and verified not in member.roles:
+        roles_to_add.append(verified)
+
+    if roles_to_add:
+        await member.add_roles(*roles_to_add, reason=f"Ensured verification roles after {backup_type} removal")
+
+    if roles_restored:
+        return "✅ Disciplinary role removed and previous roles restored from backup."
+    else:
+        return "✅ Disciplinary role removed. No previous role backup was found (user may have been processed before the backup system was added)."
 
 
 async def apply_police_disciplinary(
