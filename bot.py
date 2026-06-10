@@ -29,6 +29,18 @@ LOA_TRACKER_ROLE_ID =  1457118167095841075
 INACTIVITY_WARNING_ROLE_ID = 1457118167091642440
 LOA_COOLDOWN_ROLE_ID = 1457118167108161545
 
+# Police Blacklist / Removal commands
+POLICE_COMMAND_ROLE_IDS = [
+    1457118167204630725,   # Gold Command role ID
+    1460998934842441809    # Professional Standards role ID
+]
+
+VERIFICATION_HEADER_ROLE_ID = 1461656344510730383   # ▬▬▬▬ VERIFICATION ROLES ▬▬▬▬ role ID
+VERIFIED_ROLE_ID = 1457118167108161542              # Verified role ID
+
+POLICE_BARRED_LIST_ROLE_ID = 1457118167091642449    # Police Barred List role ID
+REMOVAL_COOLDOWN_ROLE_ID = 1457118167078801640      # Removal Cooldown role ID
+
 # Roles allowed to use /role command per guild
 ROLE_COMMAND_ALLOWED_ROLES = {
     1452412377034264576: [          # Guild 1
@@ -76,6 +88,91 @@ def can_manage_roles(user: discord.Member, guild: discord.Guild) -> bool:
             return True
 
     return False
+
+def can_use_police_commands(user: discord.Member) -> bool:
+    """Check if user can use /policeblacklist and /policeremoval (ID-based)"""
+    if is_admin(user):
+        return True
+    return any(role.id in POLICE_COMMAND_ROLE_IDS for role in user.roles)
+
+
+async def apply_police_disciplinary(
+    interaction: discord.Interaction,
+    member: discord.Member,
+    action: str,           # "blacklist" or "removal"
+    duration: str = None   # Only used for removal
+):
+    if not can_use_police_commands(interaction.user):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    guild = interaction.guild
+
+    ver_header = guild.get_role(VERIFICATION_HEADER_ROLE_ID)
+    verified = guild.get_role(VERIFIED_ROLE_ID)
+
+    if action == "blacklist":
+        temp_role_id = POLICE_BARRED_LIST_ROLE_ID
+        embed_title = "Police Blacklist Applied"
+        embed_color = discord.Color.red()
+        is_permanent = True
+    else:
+        temp_role_id = REMOVAL_COOLDOWN_ROLE_ID
+        embed_title = "Police Removal Applied"
+        embed_color = discord.Color.orange()
+        is_permanent = False
+
+    target_role = guild.get_role(temp_role_id)
+
+    if not ver_header or not verified or not target_role:
+        await interaction.followup.send("❌ One or more required roles are missing from the server.")
+        return
+
+    keep_roles = [ver_header, verified]
+
+    try:
+        # Strip all other roles
+        await member.edit(roles=keep_roles, reason=f"Police {action} by {interaction.user}")
+
+        if is_permanent:
+            # === PERMANENT ROLE (Blacklist) ===
+            await member.add_roles(target_role, reason=f"Police Blacklist - {target_role.name}")
+            role_text = f"{target_role.mention} (Permanent)"
+        else:
+            # === TEMPORARY ROLE (Removal) ===
+            if not duration:
+                await interaction.followup.send("❌ Duration is required for police removal.")
+                return
+
+            seconds = parse_duration(duration)
+            if seconds <= 0:
+                await interaction.followup.send("❌ Invalid duration format.")
+                return
+
+            expires_at = int(time.time()) + seconds
+            await member.add_roles(target_role, reason=f"Police Removal - {target_role.name}")
+            await add_temp_role(member.id, guild.id, target_role.id, expires_at, interaction.user.id)
+            role_text = f"{target_role.mention} (Temporary - {duration})"
+
+        # Confirmation embed
+        embed = discord.Embed(title=embed_title, color=embed_color)
+        embed.add_field(name="Target User", value=f"{member.mention} (`{member.id}`)", inline=False)
+        embed.add_field(name="Role Given", value=role_text, inline=True)
+        embed.add_field(
+            name="Roles Updated",
+            value="All non-verification roles removed. Only kept Verification header + Verified role.",
+            inline=False
+        )
+        embed.set_footer(text=f"Action by {interaction.user.display_name}")
+        embed.timestamp = discord.utils.utcnow()
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        print(f"❌ Error in police {action} command: {e}")
+        await interaction.followup.send("❌ Something went wrong while processing the command.")
+
 
 # ================== DURATION PARSER ==================
 def parse_duration(duration: str) -> int:
@@ -824,6 +921,17 @@ async def role(
     except Exception as e:
         print(f"Role command error: {e}")
         await interaction.followup.send("❌ Something went wrong.")
+
+@bot.tree.command(name="policeblacklist", description="Blacklist a user (strip roles + permanent Police Barred List)")
+@app_commands.describe(user="Target user")
+async def policeblacklist(interaction: discord.Interaction, user: discord.Member):
+    await apply_police_disciplinary(interaction, user, "blacklist")
+
+
+@bot.tree.command(name="policeremoval", description="Apply police removal (strip roles + temporary Removal Cooldown)")
+@app_commands.describe(user="Target user", duration="Duration (e.g. 7d, 30d, 2w)")
+async def policeremoval(interaction: discord.Interaction, user: discord.Member, duration: str):
+    await apply_police_disciplinary(interaction, user, "removal", duration)
 
 
 # ================== RUN BOT ==================
