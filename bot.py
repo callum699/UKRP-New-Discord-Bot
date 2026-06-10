@@ -41,6 +41,20 @@ VERIFIED_ROLE_ID = 1457118167108161542              # Verified role ID
 POLICE_BARRED_LIST_ROLE_ID = 1457118167091642449    # Police Barred List role ID
 REMOVAL_COOLDOWN_ROLE_ID = 1457118167078801640      # Removal Cooldown role ID
 
+# Cross-guild removal (Radio Traffic Server)
+RADIO_TRAFFIC_GUILD_ID = 1457403990433206344        # ← Guild ID of the Radio Traffic server
+
+# Roles to remove in the Radio Traffic server (use IDs)
+CROSS_GUILD_ROLES_TO_REMOVE = [
+    1457403990449852427,   # Police Personnel
+    1497974641292214363,   # EOC Operator
+    1509223811306881286,   # EOC Manager
+    1457403990458499318,   # RTO Ranking Permissions
+    1457403990458499319,   # ✰✰ Police Service High Command ✰✰
+    1466005018393055253,   # Professional Standards
+    1504096735402922065    # ✰✰✰ Police Service Gold Command ✰✰✰
+]
+
 # Roles allowed to use /role command per guild
 ROLE_COMMAND_ALLOWED_ROLES = {
     1452412377034264576: [          # Guild 1
@@ -162,6 +176,36 @@ async def restore_from_backup(member: discord.Member, backup_type: str, special_
     else:
         return "✅ Disciplinary role removed. No roles could be restored from backup."
 
+async def remove_cross_guild_roles(user_id: int):
+    """Remove specific roles from the user in the Radio Traffic server"""
+    other_guild = bot.get_guild(RADIO_TRAFFIC_GUILD_ID)
+    if not other_guild:
+        print("[Cross-Guild] Radio Traffic guild not found.")
+        return
+
+    other_member = other_guild.get_member(user_id)
+    if not other_member:
+        # Try fetching if not cached
+        try:
+            other_member = await other_guild.fetch_member(user_id)
+        except discord.NotFound:
+            return  # User not in that server
+        except Exception as e:
+            print(f"[Cross-Guild] Error fetching member: {e}")
+            return
+
+    roles_removed = []
+    for role_id in CROSS_GUILD_ROLES_TO_REMOVE:
+        role = other_guild.get_role(role_id)
+        if role and role in other_member.roles:
+            try:
+                await other_member.remove_roles(role, reason="Police Disciplinary Action (cross-guild)")
+                roles_removed.append(role.name)
+            except Exception as e:
+                print(f"[Cross-Guild] Failed to remove {role.name}: {e}")
+
+    if roles_removed:
+        print(f"[Cross-Guild] Removed from user {user_id}: {roles_removed}")
 
 async def apply_police_disciplinary(
     interaction: discord.Interaction,
@@ -221,6 +265,7 @@ async def apply_police_disciplinary(
             await member.add_roles(target_role, reason=f"Police Removal - {target_role.name}")
             await add_temp_role(member.id, guild.id, target_role.id, expires_at, interaction.user.id)
             role_text = f"{target_role.mention} (Temporary - {duration})"
+            await remove_cross_guild_roles(member.id)
 
         embed = discord.Embed(title=embed_title, color=embed_color)
         embed.add_field(name="Target User", value=f"{member.mention} (`{member.id}`)", inline=False)
