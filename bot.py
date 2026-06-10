@@ -322,11 +322,24 @@ class GlobalBanRequestView(discord.ui.View):
 # ================== DATABASE ==================
 async def setup_db():
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("""CREATE TABLE IF NOT EXISTS global_bans (user_id TEXT PRIMARY KEY, reason TEXT, banned_at INTEGER)""")
+        # Global bans table
+        await db.execute("""CREATE TABLE IF NOT EXISTS global_bans (
+            user_id TEXT PRIMARY KEY,
+            reason TEXT,
+            timestamp INTEGER
+        )""")
+
+        # Temporary roles table (for /temprole, /policeblacklist etc.)
         await db.execute("""CREATE TABLE IF NOT EXISTS temp_roles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, guild_id TEXT,
-            role_id TEXT, expires_at INTEGER, added_by TEXT, added_at INTEGER)""")
-        
+            user_id TEXT,
+            guild_id TEXT,
+            role_id TEXT,
+            expires_at INTEGER,
+            added_by TEXT,
+            PRIMARY KEY (user_id, guild_id, role_id)
+        )""")
+
+        # Active LOAs table
         await db.execute("""CREATE TABLE IF NOT EXISTS active_loas (
             user_id TEXT PRIMARY KEY,
             approved_by TEXT,
@@ -335,24 +348,17 @@ async def setup_db():
             reason TEXT,
             length TEXT
         )""")
-        await db.commit()
 
-async def setup_db():
-    async with aiosqlite.connect(DB_NAME) as db:
-        # Existing tables...
-        await db.execute("""CREATE TABLE IF NOT EXISTS global_bans ...""")
-        await db.execute("""CREATE TABLE IF NOT EXISTS temp_roles ...""")
-        await db.execute("""CREATE TABLE IF NOT EXISTS active_loas ...""")
-
-        # NEW: Store previous roles so we can restore them later
+        # NEW: Role backups for /removeblacklist and /removepoliceremoval
         await db.execute("""CREATE TABLE IF NOT EXISTS role_backups (
             user_id TEXT,
             guild_id TEXT,
-            backup_type TEXT,           -- 'blacklist' or 'removal'
-            previous_roles TEXT,        -- comma-separated role IDs
+            backup_type TEXT,
+            previous_roles TEXT,
             timestamp INTEGER,
             PRIMARY KEY (user_id, guild_id, backup_type)
         )""")
+
         await db.commit()
 
 async def add_global_ban(user_id, reason):
