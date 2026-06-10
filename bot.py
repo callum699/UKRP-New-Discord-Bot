@@ -110,9 +110,9 @@ def can_use_police_commands(user: discord.Member) -> bool:
     return any(role.id in POLICE_COMMAND_ROLE_IDS for role in user.roles)
 
 async def save_role_backup(member: discord.Member, backup_type: str):
-    """Save the user's current roles before stripping them"""
+    """Save roles in main guild + Radio Traffic server"""
+    # Save main guild roles
     guild = member.guild
-    # Save all non-@everyone roles as comma-separated IDs
     role_ids = [str(r.id) for r in member.roles if r != guild.default_role]
     previous_roles_str = ",".join(role_ids)
 
@@ -121,6 +121,20 @@ async def save_role_backup(member: discord.Member, backup_type: str):
             (user_id, guild_id, backup_type, previous_roles, timestamp)
             VALUES (?, ?, ?, ?, ?)""",
             (str(member.id), str(guild.id), backup_type, previous_roles_str, int(time.time())))
+
+        # Also save roles from Radio Traffic server (if user is there)
+        other_guild = bot.get_guild(RADIO_TRAFFIC_GUILD_ID)
+        if other_guild:
+            other_member = other_guild.get_member(member.id)
+            if other_member:
+                other_role_ids = [str(r.id) for r in other_member.roles if r != other_guild.default_role]
+                other_roles_str = ",".join(other_role_ids)
+
+                await db.execute("""INSERT OR REPLACE INTO role_backups 
+                    (user_id, guild_id, backup_type, previous_roles, timestamp)
+                    VALUES (?, ?, ?, ?, ?)""",
+                    (str(member.id), str(other_guild.id), backup_type, other_roles_str, int(time.time())))
+
         await db.commit()
 
 
@@ -206,6 +220,44 @@ async def remove_cross_guild_roles(user_id: int):
 
     if roles_removed:
         print(f"[Cross-Guild] Removed from user {user_id}: {roles_removed}")
+
+async def restore_cross_guild_roles(user_id: int, backup_type: str):
+    """Restore roles in the Radio Traffic server from backup"""
+    other_guild = bot.get_guild(RADIO_TRAFFIC_GUILD_ID)
+    if not other_guild:
+        return
+
+    other_member = other_guild.get_member(user_id)
+    if not other_member:
+        try:
+            other_member = await other_guild.fetch_member(user_id)
+        except:
+            return  # User not in that server
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            """SELECT previous_roles FROM role_backups 
+               WHERE user_id = ? AND guild_id = ? AND backup_type = ?""",
+            (str(user_id), str(other_guild.id), backup_type)
+        ) as cursor:
+            row = await cursor.fetchone()
+
+    if not row or not row[0]:
+        return  # No backup for this guild
+
+    previous_role_ids = [int(rid) for rid in row[0].split(",") if rid.strip()]
+    roles_to_add = []
+
+    for rid in previous_role_ids:
+        role = other_guild.get_role(rid)
+        if role:
+            roles_to_add.append(role)
+
+    if roles_to_add:
+        try:
+            await other_member.add_roles(*roles_to_add, reason=f"Restored roles after {backup_type} removal (cross-guild)")
+        except Exception as e:
+            print(f"[Cross-Guild Restore Error] {e}")
 
 async def apply_police_disciplinary(
     interaction: discord.Interaction,
@@ -1064,7 +1116,7 @@ async def policeremoval(interaction: discord.Interaction, user: discord.Member, 
     await apply_police_disciplinary(interaction, user, "removal", duration)
 
 
-@bot.tree.command(name="removeblacklist", description="Remove Police Barred List role and restore previous roles")
+@bot.tree.command(name="removeblacklist", description="Remove Police Barred List role and restore previous roles in both servers")
 @app_commands.describe(user="Target user")
 async def removeblacklist(interaction: discord.Interaction, user: discord.Member):
     if not can_use_police_commands(interaction.user):
@@ -1072,16 +1124,22 @@ async def removeblacklist(interaction: discord.Interaction, user: discord.Member
         return
 
     await interaction.response.defer(thinking=True)
-    result = await restore_from_backup(user, "blacklist", POLICE_BARRED_LIST_ROLE_ID)
+
+    # Restore in main guild
+    main_result = await restore_from_backup(user, "blacklist", POLICE_BARRED_LIST_ROLE_ID)
+
+    # Restore in Radio Traffic server
+    await restore_cross_guild_roles(user.id, "blacklist")
 
     embed = discord.Embed(title="Police Blacklist Removed", color=discord.Color.green())
     embed.add_field(name="Target User", value=f"{user.mention} (`{user.id}`)", inline=False)
-    embed.add_field(name="Result", value=result, inline=False)
+    embed.add_field(name="Main Server", value=main_result, inline=False)
+    embed.add_field(name="Radio Traffic Server", value="Roles restored (if backup existed)", inline=False)
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
 
 
-@bot.tree.command(name="removepoliceremoval", description="Remove Removal Cooldown role and restore previous roles")
+@bot.tree.command(name="removepoliceremoval", description="Remove Removal Cooldown role and restore previous roles in both servers")
 @app_commands.describe(user="Target user")
 async def removepoliceremoval(interaction: discord.Interaction, user: discord.Member):
     if not can_use_police_commands(interaction.user):
@@ -1089,14 +1147,19 @@ async def removepoliceremoval(interaction: discord.Interaction, user: discord.Me
         return
 
     await interaction.response.defer(thinking=True)
-    result = await restore_from_backup(user, "removal", REMOVAL_COOLDOWN_ROLE_ID)
+
+    # Restore in main guild
+    main_result = await restore_from_backup(user, "removal", REMOVAL_COOLDOWN_ROLE_ID)
+
+    # Restore in Radio Traffic server
+    await restore_cross_guild_roles(user.id, "removal")
 
     embed = discord.Embed(title="Police Removal Reversed", color=discord.Color.green())
     embed.add_field(name="Target User", value=f"{user.mention} (`{user.id}`)", inline=False)
-    embed.add_field(name="Result", value=result, inline=False)
+    embed.add_field(name="Main Server", value=main_result, inline=False)
+    embed.add_field(name="Radio Traffic Server", value="Roles restored (if backup existed)", inline=False)
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
-
 
 # ================== RUN BOT ==================
 bot.run(TOKEN)
