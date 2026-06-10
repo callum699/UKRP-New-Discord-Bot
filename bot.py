@@ -111,9 +111,11 @@ async def save_role_backup(member: discord.Member, backup_type: str):
 
 
 async def restore_from_backup(member: discord.Member, backup_type: str, special_role_id: int):
-    """Remove the special role and restore previous roles"""
+    """Remove the special role and restore ALL previous roles (including headers)"""
     guild = member.guild
     special_role = guild.get_role(special_role_id)
+    bot_top_role = guild.me.top_role
+
     ver_header = guild.get_role(VERIFICATION_HEADER_ROLE_ID)
     verified = guild.get_role(VERIFIED_ROLE_ID)
 
@@ -125,50 +127,40 @@ async def restore_from_backup(member: discord.Member, backup_type: str, special_
         ) as cursor:
             row = await cursor.fetchone()
 
-    # Always remove the special role first
+    # 1. Remove the special disciplinary role first
     if special_role and special_role in member.roles:
         await member.remove_roles(special_role, reason=f"Removed {backup_type}")
 
     roles_added = []
 
     if row and row[0]:
-        # Backup exists → restore saved roles
+        # Get all role IDs from the backup
         previous_role_ids = [int(rid) for rid in row[0].split(",") if rid.strip()]
-        roles_to_add = []
 
         for rid in previous_role_ids:
             role = guild.get_role(rid)
-            if role and role != special_role:          # skip the special role
-                roles_to_add.append(role)
+            if role and role != special_role:
+                # Only add roles the bot can manage
+                if role.position < bot_top_role.position:
+                    roles_added.append(role)
 
-        # Also ensure verification roles are included
-        if ver_header and ver_header not in roles_to_add:
-            roles_to_add.append(ver_header)
-        if verified and verified not in roles_to_add:
-            roles_to_add.append(verified)
+    # Always make sure verification roles are present
+    if ver_header and ver_header not in roles_added and ver_header.position < bot_top_role.position:
+        roles_added.append(ver_header)
+    if verified and verified not in roles_added and verified.position < bot_top_role.position:
+        roles_added.append(verified)
 
-        if roles_to_add:
-            try:
-                await member.add_roles(*roles_to_add, reason=f"Restored roles after {backup_type} removal")
-                roles_added = [r.name for r in roles_to_add]
-            except Exception as e:
-                print(f"Error adding roles back: {e}")
-
-    else:
-        # No backup found → at least give verification roles
-        roles_to_add = []
-        if ver_header and ver_header not in member.roles:
-            roles_to_add.append(ver_header)
-        if verified and verified not in member.roles:
-            roles_to_add.append(verified)
-
-        if roles_to_add:
-            await member.add_roles(*roles_to_add, reason=f"Added verification roles after {backup_type} removal")
+    # Add all roles back
+    if roles_added:
+        try:
+            await member.add_roles(*roles_added, reason=f"Restored roles after {backup_type} removal")
+        except Exception as e:
+            print(f"[Restore Error] {e}")
 
     if roles_added:
         return f"✅ Disciplinary role removed and previous roles restored ({len(roles_added)} roles added)."
     else:
-        return "✅ Disciplinary role removed. No previous role backup was found."
+        return "✅ Disciplinary role removed. No roles could be restored from backup."
 
 
 async def apply_police_disciplinary(
