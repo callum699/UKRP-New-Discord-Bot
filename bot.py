@@ -655,25 +655,27 @@ async def globalban(interaction: discord.Interaction, user: discord.User, reason
 
         for guild in bot.guilds:
             try:
-                # Prepend "Global Ban - " so it shows clearly in Discord's ban list & audit log
                 await guild.ban(user, reason=f"Global Ban - {reason}")
                 success += 1
             except:
                 pass
 
     except Exception as e:
-        print(f"❌ Error during globalban: {e}")
+        print(f"Error during globalban: {e}")
 
-    # Log to LOG_CHANNEL_ID
+    # === LOG TO LOG CHANNEL (works for both Owners and Admins) ===
     log_channel = bot.get_channel(LOG_CHANNEL_ID)
     if log_channel:
-        embed = discord.Embed(title="🔨 Global Ban Executed", color=discord.Color.red())
-        embed.add_field(name="Target User", value=f"{user} (`{user.id}`)", inline=False)
-        embed.add_field(name="Reason", value=reason, inline=False)
-        embed.add_field(name="Banned In", value=f"{success} servers", inline=True)
-        embed.add_field(name="Executed By", value=f"{interaction.user} (`{interaction.user.id}`)", inline=False)
-        embed.timestamp = datetime.now(zoneinfo.ZoneInfo("Europe/London"))
-        await log_channel.send(embed=embed)
+        try:
+            embed = discord.Embed(title="🔨 Global Ban Executed", color=discord.Color.red())
+            embed.add_field(name="Target User", value=f"{user} (`{user.id}`)", inline=False)
+            embed.add_field(name="Reason", value=reason, inline=False)
+            embed.add_field(name="Banned In", value=f"{success} servers", inline=True)
+            embed.add_field(name="Executed By", value=f"{interaction.user} (`{interaction.user.id}`)", inline=False)
+            embed.timestamp = discord.utils.utcnow()
+            await log_channel.send(embed=embed)
+        except Exception as e:
+            print(f"Failed to log globalban: {e}")
 
     await interaction.followup.send(f"✅ Banned in {success} guilds")
 
@@ -689,25 +691,30 @@ async def unglobalban(interaction: discord.Interaction, user: discord.User, reas
     success = 0
     try:
         await remove_global_ban(user.id)
+
         for guild in bot.guilds:
             try:
-                await guild.unban(user, reason=reason)
+                await guild.unban(user, reason=f"Global Unban - {reason}")
                 success += 1
             except:
                 pass
-    except Exception as e:
-        print(f"❌ Error during unglobalban: {e}")
 
-    # === LOG TO LOG CHANNEL ===
+    except Exception as e:
+        print(f"Error during unglobalban: {e}")
+
+    # === LOG TO LOG CHANNEL (works for both Owners and Admins) ===
     log_channel = bot.get_channel(LOG_CHANNEL_ID)
     if log_channel:
-        embed = discord.Embed(title="🔓 Global Unban Executed", color=discord.Color.green())
-        embed.add_field(name="Target User", value=f"{user} (`{user.id}`)", inline=False)
-        embed.add_field(name="Reason", value=reason, inline=False)
-        embed.add_field(name="Unbanned In", value=f"{success} servers", inline=True)
-        embed.add_field(name="Executed By", value=f"{interaction.user} (`{interaction.user.id}`)", inline=False)
-        embed.timestamp = datetime.now(zoneinfo.ZoneInfo("Europe/London"))
-        await log_channel.send(embed=embed)
+        try:
+            embed = discord.Embed(title="🔓 Global Unban Executed", color=discord.Color.green())
+            embed.add_field(name="Target User", value=f"{user} (`{user.id}`)", inline=False)
+            embed.add_field(name="Reason", value=reason, inline=False)
+            embed.add_field(name="Unbanned In", value=f"{success} servers", inline=True)
+            embed.add_field(name="Executed By", value=f"{interaction.user} (`{interaction.user.id}`)", inline=False)
+            embed.timestamp = discord.utils.utcnow()
+            await log_channel.send(embed=embed)
+        except Exception as e:
+            print(f"Failed to log unglobalban: {e}")
 
     await interaction.followup.send(f"✅ Unbanned in {success} guilds")
 
