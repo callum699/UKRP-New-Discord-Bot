@@ -655,6 +655,7 @@ async def globalban(interaction: discord.Interaction, user: discord.User, reason
 
         for guild in bot.guilds:
             try:
+                # This line now always adds "Global Ban - " for everyone
                 await guild.ban(user, reason=f"Global Ban - {reason}")
                 success += 1
             except:
@@ -663,7 +664,7 @@ async def globalban(interaction: discord.Interaction, user: discord.User, reason
     except Exception as e:
         print(f"Error during globalban: {e}")
 
-    # === LOG TO LOG CHANNEL (works for both Owners and Admins) ===
+    # Logging (already fixed in previous message)
     log_channel = bot.get_channel(LOG_CHANNEL_ID)
     if log_channel:
         try:
