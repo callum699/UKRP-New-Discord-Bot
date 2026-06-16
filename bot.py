@@ -771,7 +771,6 @@ async def scamlink(interaction: discord.Interaction, user: discord.User, delete_
     await interaction.followup.send(f"🛑 Scam action complete\n🔇 Timed out in: {success_timeout} servers\n🗑️ Messages deleted: {success_messages}")
 
 # ================== TEMPORARY ROLES ==================
-
 @bot.tree.command(name="temprole", description="Add or remove temporary roles")
 @app_commands.describe(
     action="add or remove",
@@ -786,21 +785,34 @@ async def scamlink(interaction: discord.Interaction, user: discord.User, delete_
 async def temprole(
     interaction: discord.Interaction,
     action: str,
-    user: discord.User,
+    user: discord.Member,           # Changed to Member for consistency
     role: discord.Role,
     duration: str = None
 ):
-    # No code permission check - Discord handles it
+    # Permission check (same as /role)
+    if not can_manage_roles(interaction.user, interaction.guild):
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
+
     action = action.lower()
+
     if action not in ["add", "remove"]:
         await interaction.response.send_message("❌ Action must be `add` or `remove`", ephemeral=True)
         return
+
+    # === NEW: Hierarchy Check (Only OWNER_IDS can bypass) ===
+    if role.position >= interaction.user.top_role.position:
+        if interaction.user.id not in OWNER_IDS:
+            await interaction.response.send_message(
+                f"❌ You cannot manage {role.mention} because it is higher than or equal to your highest role.",
+                ephemeral=True
+            )
+            return
 
     await interaction.response.defer(thinking=True)
 
     guild = interaction.guild
     member = guild.get_member(user.id)
-
     if not member:
         await interaction.followup.send("❌ User is not in this server.", ephemeral=True)
         return
@@ -825,15 +837,14 @@ async def temprole(
             await add_temp_role(user.id, guild.id, role.id, expires_at, interaction.user.id)
 
             expires_dt = datetime.fromtimestamp(expires_at, tz=timezone.utc)
-
             embed = discord.Embed(title="✅ Temporary Role Added", color=discord.Color.green())
             embed.add_field(name="User", value=f"{user} (`{user.id}`)", inline=False)
             embed.add_field(name="Role", value=role.mention, inline=False)
             embed.add_field(name="Expires", value=discord.utils.format_dt(expires_dt, style='R'), inline=False)
-
             await interaction.followup.send(embed=embed)
 
         elif action == "remove":
+            # Delete from database
             async with aiosqlite.connect(DB_NAME) as db:
                 await db.execute(
                     "DELETE FROM temp_roles WHERE user_id = ? AND guild_id = ? AND role_id = ?",
@@ -1094,20 +1105,30 @@ async def role(
     role: discord.Role,
     reason: str = None
 ):
-    # Permission check - Only "discord ranking permissions" role + Admins
+    # Permission check (your existing per-guild system)
     if not can_manage_roles(interaction.user, interaction.guild):
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
 
     action = action.lower()
 
-    # Require reason when adding role to yourself
+    # Require reason when adding a role to yourself
     if action == "add" and user.id == interaction.user.id and not reason:
         await interaction.response.send_message(
             "❌ You must provide a reason when adding a role to yourself.",
             ephemeral=True
         )
         return
+
+    # === NEW: Hierarchy Check ===
+    # Only users in OWNER_IDS can bypass this
+    if role.position >= interaction.user.top_role.position:
+        if interaction.user.id not in OWNER_IDS:
+            await interaction.response.send_message(
+                f"❌ You cannot manage {role.mention} because it is higher than or equal to your highest role.",
+                ephemeral=True
+            )
+            return
 
     await interaction.response.defer(thinking=True)
 
@@ -1118,7 +1139,6 @@ async def role(
 
             await user.add_roles(role, reason=reason or f"Added by {interaction.user}")
 
-            # Very clean embed (no title)
             embed = discord.Embed(color=discord.Color.green())
             embed.description = f"✅ Added {role.mention} to {user.mention}."
             await interaction.followup.send(embed=embed)
@@ -1129,7 +1149,6 @@ async def role(
 
             await user.remove_roles(role, reason=f"Removed by {interaction.user}")
 
-            # Very clean embed (no title)
             embed = discord.Embed(color=discord.Color.red())
             embed.description = f"❌ Removed {role.mention} from {user.mention}."
             await interaction.followup.send(embed=embed)
