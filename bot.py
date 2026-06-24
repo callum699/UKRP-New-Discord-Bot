@@ -1380,25 +1380,43 @@ class TrainingView(discord.ui.View):
     app_commands.Choice(name="Roads Policing Unit", value="Roads")
 ])
 async def training(interaction: discord.Interaction, division: str, time: str):
-    # Permission check
-    if not any(r.id in [ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID, ROADS_INSTRUCTOR_ROLE_ID] 
-               for r in interaction.user.roles):
-        await interaction.response.send_message(
-            "❌ Only Entry Programme Instructors and Roads Instructors can use this command.", 
-            ephemeral=True
-        )
-        return
+    try:
+        # Permission check
+        if not any(r.id in [ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID, ROADS_INSTRUCTOR_ROLE_ID] 
+                   for r in interaction.user.roles):
+            await interaction.response.send_message(
+                "❌ Only Entry Programme Instructors and Roads Instructors can use this command.", 
+                ephemeral=True
+            )
+            return
 
-    view = TrainingView(division, time, interaction.user)
-    embed = view.create_embed()
+        view = TrainingView(division, time, interaction.user)
+        embed = view.create_embed()
 
-    # Ping the required roles above the embed
-    ping = f"<@&{ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID}> <@&{STUDENT_CONSTABLE_ROLE_ID}>"
+        # Ping roles
+        ping = f"<@&{ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID}> <@&{STUDENT_CONSTABLE_ROLE_ID}>"
 
-    channel = bot.get_channel(TRAINING_ANNOUNCEMENTS_CHANNEL_ID)
-    await channel.send(content=ping, embed=embed, view=view)
+        channel = bot.get_channel(TRAINING_ANNOUNCEMENTS_CHANNEL_ID)
+        
+        if channel is None:
+            await interaction.response.send_message(
+                "❌ Training announcements channel not found. Check the ID in config.", 
+                ephemeral=True
+            )
+            return
 
-    await interaction.response.send_message("Training announcement has been posted!", ephemeral=True)
+        await channel.send(content=ping, embed=embed, view=view)
+        await interaction.response.send_message("Training announcement has been posted!", ephemeral=True)
+
+    except Exception as e:
+        print(f"❌ ERROR in /training command: {e}")
+        try:
+            await interaction.response.send_message(
+                f"❌ Something went wrong: {str(e)}", 
+                ephemeral=True
+            )
+        except:
+            pass
 
 # ================== RUN BOT ==================
 bot.run(TOKEN)
