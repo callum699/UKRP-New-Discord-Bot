@@ -1243,13 +1243,13 @@ class TrainingView(discord.ui.View):
         if self.division == "Response":
             title = f"Response Training — {self.status}"
             description = f"A training for the Response Division will be held at {self.time}. Please make sure you are in-game, on the Police team in your uniform and sat down in the briefing room."
-            vc_name = "Response Training"
+            vc_field_name = "Response Training VC"
             vc_link = f"https://discord.com/channels/1457118167078801631/{RESPONSE_TRAINING_VC_ID}"
         else:
             title = f"Roads Training — {self.status}"
-            description = f"A training for the Roads Policing Unit will be held at {self.time}. Please make sure you are in-game, on the Police team in your uniform and sat down in the briefing room."
-            vc_name = "Roads Training"
-            vc_link = f"https://discord.com/channels/1457118167078801631/{ROADS_TRAINING_VC_ID}"
+            description = f"A training for the Roads Policing Unit will be held at {self.time}. Please make sure you are in-game and ready."
+            vc_field_name = "Roads Training VC"
+            vc_link = "https://discord.com/channels/1457118167078801631/REPLACE_WITH_ROADS_VC_ID"
 
         color = discord.Color.orange()
         if self.status == "In Progress":
@@ -1264,19 +1264,19 @@ class TrainingView(discord.ui.View):
         if self.co_hosts:
             host_text += "\n" + "\n".join([c.mention for c in self.co_hosts])
         embed.add_field(name="Hosts", value=host_text, inline=False)
-        embed.add_field(name="───────────────", value="\u200b", inline=False)
+        embed.add_field(name="────────────", value="\u200b", inline=False)
 
         # Attendees
         if self.attendees:
             embed.add_field(name="Attendees", value="\n".join([a.mention for a in self.attendees]), inline=False)
         else:
             embed.add_field(name="Attendees", value="No one yet", inline=False)
-        embed.add_field(name="───────────────", value="\u200b", inline=False)
+        embed.add_field(name="────────────", value="\u200b", inline=False)
 
-        # Response Training VC
+        # Response Training VC (clean - only link)
         embed.add_field(
-            name="Response Training VC", 
-            value=f"{vc_name}\n{vc_link}", 
+            name=vc_field_name, 
+            value=vc_link, 
             inline=False
         )
 
@@ -1317,7 +1317,6 @@ class TrainingView(discord.ui.View):
             await interaction.response.send_message("❌ Only Entry Programme Instructors can be Co-Hosts.", ephemeral=True)
             return
 
-    # Prevent host from adding themselves as Co-Host
         if interaction.user == self.host:
             await interaction.response.send_message("❌ You are already hosting the training.", ephemeral=True)
             return
