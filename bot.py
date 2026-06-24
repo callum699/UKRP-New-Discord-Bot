@@ -1248,9 +1248,9 @@ class TrainingView(discord.ui.View):
             vc_link = f"https://discord.com/channels/1457118167078801631/{RESPONSE_TRAINING_VC_ID}"
         else:
             title = f"Roads Training — {self.status}"
-            description = f"A training for the Roads Policing Unit will be held at {self.time}. Please make sure you are in-game, on the Police team in your uniform and sat down in the briefing room."
+            description = f"A training for the Roads Policing Unit will be held at {self.time}. Please make sure you are in-game and ready."
             vc_field_name = "Roads Training VC"
-            vc_link = f"https://discord.com/channels/1457118167078801631/{ROADS_TRAINING_VC_ID}"
+            vc_link = "https://discord.com/channels/1457118167078801631/REPLACE_WITH_ROADS_VC_ID"
 
         color = discord.Color.orange()
         if self.status == "In Progress":
@@ -1260,26 +1260,19 @@ class TrainingView(discord.ui.View):
 
         embed = discord.Embed(title=title, description=description, color=color)
 
-        # Hosts
         host_text = f"{self.host.mention}"
         if self.co_hosts:
             host_text += "\n" + "\n".join([c.mention for c in self.co_hosts])
         embed.add_field(name="Hosts", value=host_text, inline=False)
-        embed.add_field(name="───────────────", value="\u200b", inline=False)
+        embed.add_field(name="────────────", value="\u200b", inline=False)
 
-        # Attendees
         if self.attendees:
             embed.add_field(name="Attendees", value="\n".join([a.mention for a in self.attendees]), inline=False)
         else:
-            embed.add_field(name="Attendees", value="No attendees yet", inline=False)
-        embed.add_field(name="───────────────", value="\u200b", inline=False)
+            embed.add_field(name="Attendees", value="No one yet", inline=False)
+        embed.add_field(name="────────────", value="\u200b", inline=False)
 
-        # Response Training VC (clean - only link)
-        embed.add_field(
-            name=vc_field_name, 
-            value=vc_link, 
-            inline=False
-        )
+        embed.add_field(name=vc_field_name, value=vc_link, inline=False)
 
         if self.ended_by:
             embed.add_field(name="Ended By", value=self.ended_by.mention, inline=False)
@@ -1293,8 +1286,16 @@ class TrainingView(discord.ui.View):
 
     @discord.ui.button(label="Start", style=discord.ButtonStyle.green, emoji="▶️")
     async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not any(r.id == ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID for r in interaction.user.roles):
-            await interaction.response.send_message("❌ Only Entry Programme Instructors can start the training.", ephemeral=True)
+        if self.division == "Response":
+            allowed_role = ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID
+        else:
+            allowed_role = ROADS_INSTRUCTOR_ROLE_ID
+
+        if not any(r.id == allowed_role for r in interaction.user.roles):
+            await interaction.response.send_message(
+                "❌ Only the correct Instructor role can start this training.", 
+                ephemeral=True
+            )
             return
 
         if self.status != "Upcoming":
@@ -1340,7 +1341,6 @@ class TrainingView(discord.ui.View):
             await interaction.response.send_message("❌ You can no longer mark yourself as attending.", ephemeral=True)
             return
 
-        # Check correct role based on division
         if self.division == "Response":
             allowed_role = RESPONSE_TRAINEE_ROLE_ID
         else:
@@ -1363,6 +1363,18 @@ class TrainingView(discord.ui.View):
 
     @discord.ui.button(label="End Training", style=discord.ButtonStyle.red, emoji="🛑")
     async def end_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.division == "Response":
+            allowed_role = ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID
+        else:
+            allowed_role = ROADS_INSTRUCTOR_ROLE_ID
+
+        if not any(r.id == allowed_role for r in interaction.user.roles):
+            await interaction.response.send_message(
+                "❌ Only the correct Instructor role can end this training.", 
+                ephemeral=True
+            )
+            return
+
         if self.status == "Ended":
             await interaction.response.send_message("❌ Training has already ended.", ephemeral=True)
             return
@@ -1405,13 +1417,13 @@ async def training(interaction: discord.Interaction, division: str, time: str):
         if division == "Response":
             ping = f"<@&{ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID}> <@&{RESPONSE_TRAINEE_ROLE_ID}>"
         else:
-            ping = f"<@&{ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID}> <@&{ROADS_TRAINEE_ROLE_ID}>"
+            ping = f"<@&{ROADS_INSTRUCTOR_ROLE_ID}> <@&{ROADS_TRAINEE_ROLE_ID}>"
 
         channel = bot.get_channel(TRAINING_ANNOUNCEMENTS_CHANNEL_ID)
 
         if channel is None:
             await interaction.response.send_message(
-                "❌ Could not find the training announcements channel. Check the ID.", 
+                "❌ Could not find the training announcements channel. Check TRAINING_ANNOUNCEMENTS_CHANNEL_ID.", 
                 ephemeral=True
             )
             return
@@ -1419,15 +1431,12 @@ async def training(interaction: discord.Interaction, division: str, time: str):
         await channel.send(content=ping, embed=embed, view=view)
         await interaction.response.send_message("Training announcement has been posted!", ephemeral=True)
 
-    except Exception as e:
-        print(f"❌ ERROR in /training command: {e}")
-        try:
-            await interaction.response.send_message(
-                f"❌ Something went wrong: {str(e)}", 
-                ephemeral=True
-            )
-        except:
-            pass
+    except Exception as error:
+        print(f"❌ ERROR in /training command: {error}")
+        await interaction.response.send_message(
+            f"❌ Something went wrong. Check the bot logs for details.", 
+            ephemeral=True
+        )
 
 # ================== RUN BOT ==================
 bot.run(TOKEN)
