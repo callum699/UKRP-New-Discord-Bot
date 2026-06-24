@@ -63,6 +63,7 @@ STUDENT_CONSTABLE_ROLE_ID          = 1457118167196504127   # ← Fill this in
 TRAINING_ANNOUNCEMENTS_CHANNEL_ID  = 1457118170983956611   # ← Channel where the embed is posted
 
 RESPONSE_TRAINING_VC_ID = 1457118171181093100
+ROADS_TRAINING_VC_ID = 1519410873700192286
 
 # Second cross-guild server (Main Server)
 MAIN_SERVER_GUILD_ID = 1452412377034264576          # ← Guild ID of the "Main Server"
@@ -1246,9 +1247,9 @@ class TrainingView(discord.ui.View):
             vc_link = f"https://discord.com/channels/1457118167078801631/{RESPONSE_TRAINING_VC_ID}"
         else:
             title = f"Roads Training — {self.status}"
-            description = f"A training for the Roads Policing Unit will be held at {self.time}. Please make sure you are in-game and ready."
+            description = f"A training for the Roads Policing Unit will be held at {self.time}. Please make sure you are in-game, on the Police team in your uniform and sat down in the briefing room."
             vc_name = "Roads Training"
-            vc_link = "https://discord.com/channels/1457118167078801631/REPLACE_WITH_ROADS_VC_ID"
+            vc_link = f"https://discord.com/channels/1457118167078801631/{ROADS_TRAINING_VC_ID}"
 
         color = discord.Color.orange()
         if self.status == "In Progress":
@@ -1263,19 +1264,19 @@ class TrainingView(discord.ui.View):
         if self.co_hosts:
             host_text += "\n" + "\n".join([c.mention for c in self.co_hosts])
         embed.add_field(name="Hosts", value=host_text, inline=False)
-        embed.add_field(name="────────────", value="\u200b", inline=False)
+        embed.add_field(name="───────────────", value="\u200b", inline=False)
 
         # Attendees
         if self.attendees:
             embed.add_field(name="Attendees", value="\n".join([a.mention for a in self.attendees]), inline=False)
         else:
             embed.add_field(name="Attendees", value="No one yet", inline=False)
-        embed.add_field(name="────────────", value="\u200b", inline=False)
+        embed.add_field(name="───────────────", value="\u200b", inline=False)
 
         # Response Training VC
         embed.add_field(
             name="Response Training VC", 
-            value=f"Click here to join the correct voice channel.\n{vc_name}\n{vc_link}", 
+            value=f"{vc_name}\n{vc_link}", 
             inline=False
         )
 
