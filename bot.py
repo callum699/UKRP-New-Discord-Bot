@@ -1247,9 +1247,9 @@ class TrainingView(discord.ui.View):
             vc_link = f"https://discord.com/channels/1457118167078801631/{RESPONSE_TRAINING_VC_ID}"
         else:
             title = f"Roads Training — {self.status}"
-            description = f"A training for the Roads Policing Unit will be held at {self.time}. Please make sure you are in-game and ready."
+            description = f"A training for the Roads Policing Unit will be held at {self.time}. Please make sure you are in-game, on the Police team in your uniform and sat down in the briefing room."
             vc_field_name = "Roads Training VC"
-            vc_link = "https://discord.com/channels/1457118167078801631/REPLACE_WITH_ROADS_VC_ID"
+            vc_link = f"https://discord.com/channels/1457118167078801631/{ROADS_TRAINING_VC_ID}"
 
         color = discord.Color.orange()
         if self.status == "In Progress":
