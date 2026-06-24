@@ -1268,7 +1268,7 @@ class TrainingView(discord.ui.View):
         else:
             embed.add_field(name="Attendees", value="No one yet", inline=False)
 
-        embed.add_field(name="Active Staff VC", value=f"{vc_name}\n{vc_link}", inline=False)
+        embed.add_field(name="Response Training VC", value=f"{vc_name}\n{vc_link}", inline=False)
 
         if self.ended_by:
             embed.add_field(name="Ended By", value=self.ended_by.mention, inline=False)
