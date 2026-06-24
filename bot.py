@@ -62,6 +62,7 @@ RESPONSE_TRAINEE_ROLE_ID = 1505522666369712160
 ROADS_TRAINEE_ROLE_ID    = 1519416148926402632
 
 TRAINING_ANNOUNCEMENTS_CHANNEL_ID  = 1457118170983956611   # ← Channel where the embed is posted
+TRAINING_LOGS_CHANNEL_ID = 1457118171181093098   # ← Training Logs Channel ID
 
 RESPONSE_TRAINING_VC_ID = 1457118171181093100
 ROADS_TRAINING_VC_ID = 1519410873700192286
@@ -1437,6 +1438,57 @@ async def training(interaction: discord.Interaction, division: str, time: str):
             f"❌ Something went wrong. Check the bot logs for details.", 
             ephemeral=True
         )
+
+@bot.tree.command(name="logtraining", description="Log a completed training session")
+@app_commands.describe(
+    training_type="Type of training (e.g. Response Training, Roads Training)",
+    hosts="Mention the host(s) of the training",
+    attendees="Mention the people who attended",
+    proof="Upload a screenshot as proof"
+)
+async def logtraining(
+    interaction: discord.Interaction,
+    training_type: str,
+    hosts: str,
+    attendees: str,
+    proof: discord.Attachment
+):
+    # Restrict to Training Logs Channel only
+    if interaction.channel.id != TRAINING_LOGS_CHANNEL_ID:
+        await interaction.response.send_message(
+            "❌ This command can only be used in the Training Logs channel.", 
+            ephemeral=True
+        )
+        return
+
+    # Permission check
+    if not any(r.id in [ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID, ROADS_INSTRUCTOR_ROLE_ID] 
+               for r in interaction.user.roles):
+        await interaction.response.send_message(
+            "❌ Only Entry Programme Instructors and Roads Instructors can use this command.", 
+            ephemeral=True
+        )
+        return
+
+    # Create embed
+    embed = discord.Embed(
+        title="Training Log",
+        color=discord.Color.blue()
+    )
+
+    embed.add_field(name="Submitted By", value=interaction.user.mention, inline=False)
+    embed.add_field(name="Type of Training", value=training_type, inline=False)
+    embed.add_field(name="Hosts", value=hosts, inline=False)
+    embed.add_field(name="Attendees", value=attendees, inline=False)
+    embed.add_field(name="Proof", value="See attached image below", inline=False)
+    embed.add_field(name="Status", value="Logged", inline=False)
+    embed.set_footer(text=f"Logged by {interaction.user.display_name}")
+
+    # Send to Training Logs Channel
+    channel = bot.get_channel(TRAINING_LOGS_CHANNEL_ID)
+    await channel.send(embed=embed, file=await proof.to_file())
+
+    await interaction.response.send_message("✅ Training log has been submitted.", ephemeral=True)
 
 # ================== RUN BOT ==================
 bot.run(TOKEN)
