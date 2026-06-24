@@ -1480,13 +1480,16 @@ async def logtraining(
     embed.add_field(name="Type of Training", value=training_type, inline=False)
     embed.add_field(name="Hosts", value=hosts, inline=False)
     embed.add_field(name="Attendees", value=attendees, inline=False)
-    embed.add_field(name="Proof", value="See attached image below", inline=False)
-    embed.add_field(name="Status", value="Logged", inline=False)
+    embed.add_field(name="Proof", value="See image below", inline=False)
+
+    # Attach the image inside the embed
+    embed.set_image(url=proof.url)
+
     embed.set_footer(text=f"Logged by {interaction.user.display_name}")
 
     # Send to Training Logs Channel
     channel = bot.get_channel(TRAINING_LOGS_CHANNEL_ID)
-    await channel.send(embed=embed, file=await proof.to_file())
+    await channel.send(embed=embed)
 
     await interaction.response.send_message("✅ Training log has been submitted.", ephemeral=True)
 
