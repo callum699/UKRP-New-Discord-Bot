@@ -1480,7 +1480,7 @@ async def logtraining(
     embed.add_field(name="Type of Training", value=training_type, inline=False)
     embed.add_field(name="Hosts", value=hosts, inline=False)
     embed.add_field(name="Attendees", value=attendees, inline=False)
-    embed.add_field(name="Proof", value="See image below", inline=False)
+    embed.add_field(name="Proof", value="\u200b", inline=False)
 
     # Attach the image inside the embed
     embed.set_image(url=proof.url)
