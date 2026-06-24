@@ -1,3 +1,5 @@
+from turtle import title
+
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -1272,10 +1274,10 @@ class TrainingView(discord.ui.View):
             embed.add_field(name="Attendees", value="No one yet", inline=False)
         embed.add_field(name="────────────", value="\u200b", inline=False)
 
-        # Active Staff VC
+        # Response Training VC
         embed.add_field(
-            name="Active Staff VC", 
-            value=f"Join the voice channel before marking yourself as attending.\n{vc_name}\n{vc_link}", 
+            name="Response Training VC", 
+            value=f"Click here to join the correct voice channel.\n{vc_name}\n{vc_link}", 
             inline=False
         )
 
@@ -1314,6 +1316,11 @@ class TrainingView(discord.ui.View):
 
         if not any(r.id == ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID for r in interaction.user.roles):
             await interaction.response.send_message("❌ Only Entry Programme Instructors can be Co-Hosts.", ephemeral=True)
+            return
+
+    # Prevent host from adding themselves as Co-Host
+        if interaction.user == self.host:
+            await interaction.response.send_message("❌ You are already hosting the training.", ephemeral=True)
             return
 
         if len(self.co_hosts) >= 3:
