@@ -1354,6 +1354,7 @@ class TrainingView(discord.ui.View):
 
 
 # ================== SLASH COMMAND ==================
+@bot.tree.command(name="training", description="Schedule a training session")
 @app_commands.describe(
     division="Which division is the training for?",
     time="When is the training? (e.g. Tonight at 8pm)"
