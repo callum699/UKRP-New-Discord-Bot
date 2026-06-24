@@ -58,7 +58,8 @@ CROSS_GUILD_ROLES_TO_REMOVE = [
 # Training Command Roles & Channels
 ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID = 1457118167095841079   # ← Fill this in
 ROADS_INSTRUCTOR_ROLE_ID           = 1510303284299304961   # ← Fill this in
-STUDENT_CONSTABLE_ROLE_ID          = 1457118167196504127   # ← Fill this in
+RESPONSE_TRAINEE_ROLE_ID = 1505522666369712160
+ROADS_TRAINEE_ROLE_ID    = 1519416148926402632
 
 TRAINING_ANNOUNCEMENTS_CHANNEL_ID  = 1457118170983956611   # ← Channel where the embed is posted
 
@@ -1264,14 +1265,14 @@ class TrainingView(discord.ui.View):
         if self.co_hosts:
             host_text += "\n" + "\n".join([c.mention for c in self.co_hosts])
         embed.add_field(name="Hosts", value=host_text, inline=False)
-        embed.add_field(name="────────────", value="\u200b", inline=False)
+        embed.add_field(name="───────────────", value="\u200b", inline=False)
 
         # Attendees
         if self.attendees:
             embed.add_field(name="Attendees", value="\n".join([a.mention for a in self.attendees]), inline=False)
         else:
-            embed.add_field(name="Attendees", value="No one yet", inline=False)
-        embed.add_field(name="────────────", value="\u200b", inline=False)
+            embed.add_field(name="Attendees", value="No attendees yet", inline=False)
+        embed.add_field(name="───────────────", value="\u200b", inline=False)
 
         # Response Training VC (clean - only link)
         embed.add_field(
@@ -1339,8 +1340,17 @@ class TrainingView(discord.ui.View):
             await interaction.response.send_message("❌ You can no longer mark yourself as attending.", ephemeral=True)
             return
 
-        if not any(r.id == STUDENT_CONSTABLE_ROLE_ID for r in interaction.user.roles):
-            await interaction.response.send_message("❌ Only Student Constables can mark themselves as attending.", ephemeral=True)
+        # Check correct role based on division
+        if self.division == "Response":
+            allowed_role = RESPONSE_TRAINEE_ROLE_ID
+        else:
+            allowed_role = ROADS_TRAINEE_ROLE_ID
+
+        if not any(r.id == allowed_role for r in interaction.user.roles):
+            await interaction.response.send_message(
+                "❌ Only the correct Trainee role can mark themselves as attending.", 
+                ephemeral=True
+            )
             return
 
         if interaction.user in self.attendees:
@@ -1391,14 +1401,17 @@ async def training(interaction: discord.Interaction, division: str, time: str):
         view = TrainingView(division, time, interaction.user)
         embed = view.create_embed()
 
-        # Ping roles
-        ping = f"<@&{ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID}> <@&{STUDENT_CONSTABLE_ROLE_ID}>"
+        # Ping roles above the embed
+        if division == "Response":
+            ping = f"<@&{ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID}> <@&{RESPONSE_TRAINEE_ROLE_ID}>"
+        else:
+            ping = f"<@&{ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID}> <@&{ROADS_TRAINEE_ROLE_ID}>"
 
         channel = bot.get_channel(TRAINING_ANNOUNCEMENTS_CHANNEL_ID)
-        
+
         if channel is None:
             await interaction.response.send_message(
-                "❌ Training announcements channel not found. Check the ID in config.", 
+                "❌ Could not find the training announcements channel. Check the ID.", 
                 ephemeral=True
             )
             return
