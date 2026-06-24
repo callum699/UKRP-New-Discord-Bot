@@ -1258,19 +1258,24 @@ class TrainingView(discord.ui.View):
 
         embed = discord.Embed(title=title, description=description, color=color)
 
+        # Hosts
         host_text = f"{self.host.mention}"
         if self.co_hosts:
             host_text += "\n" + "\n".join([c.mention for c in self.co_hosts])
         embed.add_field(name="Hosts", value=host_text, inline=False)
+        embed.add_field(name="────────────", value="\u200b", inline=False)
 
+        # Attendees
         if self.attendees:
             embed.add_field(name="Attendees", value="\n".join([a.mention for a in self.attendees]), inline=False)
         else:
-            embed.add_field(name="Attendees", value="No attendees yet", inline=False)
+            embed.add_field(name="Attendees", value="No one yet", inline=False)
+        embed.add_field(name="────────────", value="\u200b", inline=False)
 
+        # Active Staff VC
         embed.add_field(
-            name="Response Training VC", 
-            value=f"Click here to join the correct voice channel.\n{vc_name}\n{vc_link}", 
+            name="Active Staff VC", 
+            value=f"Join the voice channel before marking yourself as attending.\n{vc_name}\n{vc_link}", 
             inline=False
         )
 
