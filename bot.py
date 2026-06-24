@@ -55,6 +55,15 @@ CROSS_GUILD_ROLES_TO_REMOVE = [
     1504096735402922065    # ✰✰✰ Police Service Gold Command ✰✰✰
 ]
 
+# Training Command Roles & Channels
+ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID = 1457118167095841079   # ← Fill this in
+ROADS_INSTRUCTOR_ROLE_ID           = 1510303284299304961   # ← Fill this in
+STUDENT_CONSTABLE_ROLE_ID          = 1457118167196504127   # ← Fill this in
+
+TRAINING_ANNOUNCEMENTS_CHANNEL_ID  = 1457118170983956611   # ← Channel where the embed is posted
+
+RESPONSE_TRAINING_VC_ID = 1457118171181093100
+
 # Second cross-guild server (Main Server)
 MAIN_SERVER_GUILD_ID = 1452412377034264576          # ← Guild ID of the "Main Server"
 
@@ -1215,6 +1224,164 @@ async def removepoliceremoval(interaction: discord.Interaction, user: discord.Me
     embed.add_field(name="Radio Traffic + Main Server", value="Roles restored from backup", inline=False)
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
+
+# ================== TRAINING COMMAND ==================
+
+class TrainingView(discord.ui.View):
+    def __init__(self, division: str, time: str, host: discord.Member):
+        super().__init__(timeout=None)
+        self.division = division
+        self.time = time
+        self.host = host
+        self.co_hosts = []
+        self.attendees = []
+        self.status = "Upcoming"
+        self.ended_by = None
+
+    def create_embed(self):
+        if self.division == "Response":
+            title = f"Response Training — {self.status}"
+            description = f"A training for the Response Division will be held at {self.time}. Please make sure you are in-game, on the Police team in your uniform and sat down in the briefing room."
+            vc_name = "Response Training"
+            vc_link = f"https://discord.com/channels/1457118167078801631/{RESPONSE_TRAINING_VC_ID}"
+        else:
+            title = f"Roads Training — {self.status}"
+            description = f"A training for the Roads Policing Unit will be held at {self.time}. Please make sure you are in-game and ready."
+            vc_name = "Roads Training"
+            vc_link = "https://discord.com/channels/1457118167078801631/REPLACE_WITH_ROADS_VC_ID"
+
+        color = discord.Color.orange()
+        if self.status == "In Progress":
+            color = discord.Color.green()
+        elif self.status == "Ended":
+            color = discord.Color.red()
+
+        embed = discord.Embed(title=title, description=description, color=color)
+
+        host_text = f"{self.host.mention}"
+        if self.co_hosts:
+            host_text += "\n" + "\n".join([c.mention for c in self.co_hosts])
+        embed.add_field(name="Hosts", value=host_text, inline=False)
+
+        if self.attendees:
+            embed.add_field(name="Attendees", value="\n".join([a.mention for a in self.attendees]), inline=False)
+        else:
+            embed.add_field(name="Attendees", value="No one yet", inline=False)
+
+        embed.add_field(name="Active Staff VC", value=f"{vc_name}\n{vc_link}", inline=False)
+
+        if self.ended_by:
+            embed.add_field(name="Ended By", value=self.ended_by.mention, inline=False)
+
+        return embed
+
+    def disable_attendance_buttons(self):
+        for child in self.children:
+            if child.label in ["Attend as Co-Host", "Attending"]:
+                child.disabled = True
+
+    @discord.ui.button(label="Start", style=discord.ButtonStyle.green, emoji="▶️")
+    async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not any(r.id == ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID for r in interaction.user.roles):
+            await interaction.response.send_message("❌ Only Entry Programme Instructors can start the training.", ephemeral=True)
+            return
+
+        if self.status != "Upcoming":
+            await interaction.response.send_message("❌ Training has already started or ended.", ephemeral=True)
+            return
+
+        self.status = "In Progress"
+        button.disabled = True
+        self.disable_attendance_buttons()
+
+        await interaction.message.edit(embed=self.create_embed(), view=self)
+        await interaction.response.send_message("Training has started!", ephemeral=True)
+
+    @discord.ui.button(label="Attend as Co-Host", style=discord.ButtonStyle.blurple, emoji="👥")
+    async def cohost_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.status != "Upcoming":
+            await interaction.response.send_message("❌ You can no longer join as Co-Host.", ephemeral=True)
+            return
+
+        if not any(r.id == ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID for r in interaction.user.roles):
+            await interaction.response.send_message("❌ Only Entry Programme Instructors can be Co-Hosts.", ephemeral=True)
+            return
+
+        if len(self.co_hosts) >= 3:
+            await interaction.response.send_message("❌ Maximum of 3 Co-Hosts allowed.", ephemeral=True)
+            return
+
+        if interaction.user in self.co_hosts:
+            await interaction.response.send_message("❌ You are already a Co-Host.", ephemeral=True)
+            return
+
+        self.co_hosts.append(interaction.user)
+        await interaction.message.edit(embed=self.create_embed(), view=self)
+        await interaction.response.send_message("You are now a Co-Host!", ephemeral=True)
+
+    @discord.ui.button(label="Attending", style=discord.ButtonStyle.green, emoji="✅")
+    async def attending_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.status != "Upcoming":
+            await interaction.response.send_message("❌ You can no longer mark yourself as attending.", ephemeral=True)
+            return
+
+        if not any(r.id == STUDENT_CONSTABLE_ROLE_ID for r in interaction.user.roles):
+            await interaction.response.send_message("❌ Only Student Constables can mark themselves as attending.", ephemeral=True)
+            return
+
+        if interaction.user in self.attendees:
+            await interaction.response.send_message("❌ You have already marked yourself as attending.", ephemeral=True)
+            return
+
+        self.attendees.append(interaction.user)
+        await interaction.message.edit(embed=self.create_embed(), view=self)
+        await interaction.response.send_message("You are now marked as attending!", ephemeral=True)
+
+    @discord.ui.button(label="End Training", style=discord.ButtonStyle.red, emoji="🛑")
+    async def end_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.status == "Ended":
+            await interaction.response.send_message("❌ Training has already ended.", ephemeral=True)
+            return
+
+        self.status = "Ended"
+        self.ended_by = interaction.user
+
+        for child in self.children:
+            child.disabled = True
+
+        await interaction.message.edit(embed=self.create_embed(), view=self)
+        await interaction.response.send_message("Training has ended.", ephemeral=True)
+
+
+# ================== SLASH COMMAND ==================
+@app_commands.describe(
+    division="Which division is the training for?",
+    time="When is the training? (e.g. Tonight at 8pm)"
+)
+@app_commands.choices(division=[
+    app_commands.Choice(name="Response Division", value="Response"),
+    app_commands.Choice(name="Roads Policing Unit", value="Roads")
+])
+async def training(interaction: discord.Interaction, division: str, time: str):
+    # Permission check
+    if not any(r.id in [ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID, ROADS_INSTRUCTOR_ROLE_ID] 
+               for r in interaction.user.roles):
+        await interaction.response.send_message(
+            "❌ Only Entry Programme Instructors and Roads Instructors can use this command.", 
+            ephemeral=True
+        )
+        return
+
+    view = TrainingView(division, time, interaction.user)
+    embed = view.create_embed()
+
+    # Ping the required roles above the embed
+    ping = f"<@&{ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID}> <@&{STUDENT_CONSTABLE_ROLE_ID}>"
+
+    channel = bot.get_channel(TRAINING_ANNOUNCEMENTS_CHANNEL_ID)
+    await channel.send(content=ping, embed=embed, view=view)
+
+    await interaction.response.send_message("Training announcement has been posted!", ephemeral=True)
 
 # ================== RUN BOT ==================
 bot.run(TOKEN)
