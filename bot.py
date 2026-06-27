@@ -1311,56 +1311,72 @@ class TrainingView(discord.ui.View):
         await interaction.response.send_message("Training has started!", ephemeral=True)
 
     @discord.ui.button(label="Attend as Co-Host", style=discord.ButtonStyle.blurple, emoji="👥")
-    async def cohost_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.status != "Upcoming":
-            await interaction.response.send_message("❌ You can no longer join as Co-Host.", ephemeral=True)
-            return
+async def cohost_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    if self.status != "Upcoming":
+        await interaction.response.send_message("❌ You can no longer join as Co-Host.", ephemeral=True)
+        return
 
-        if not any(r.id == ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID for r in interaction.user.roles):
-            await interaction.response.send_message("❌ Only Entry Programme Instructors can be Co-Hosts.", ephemeral=True)
-            return
+    if not any(r.id == ENTRY_PROGRAMME_INSTRUCTOR_ROLE_ID for r in interaction.user.roles):
+        await interaction.response.send_message("❌ Only Entry Programme Instructors can be Co-Hosts.", ephemeral=True)
+        return
 
-        if interaction.user == self.host:
-            await interaction.response.send_message("❌ You are already hosting the training.", ephemeral=True)
-            return
+    if interaction.user == self.host:
+        await interaction.response.send_message("❌ You are already hosting the training.", ephemeral=True)
+        return
 
+    # Toggle logic
+    if interaction.user in self.co_hosts:
+        # User wants to withdraw
+        self.co_hosts.remove(interaction.user)
+        button.label = "Attend as Co-Host"
+        button.emoji = "👥"
+    else:
         if len(self.co_hosts) >= 3:
             await interaction.response.send_message("❌ Maximum of 3 Co-Hosts allowed.", ephemeral=True)
             return
 
-        if interaction.user in self.co_hosts:
-            await interaction.response.send_message("❌ You are already a Co-Host.", ephemeral=True)
-            return
-
         self.co_hosts.append(interaction.user)
-        await interaction.message.edit(embed=self.create_embed(), view=self)
-        await interaction.response.send_message("You are now a Co-Host!", ephemeral=True)
+        button.label = "Withdraw"
+        button.emoji = "❌"
+
+    await interaction.message.edit(embed=self.create_embed(), view=self)
+    await interaction.response.send_message(
+        "You have withdrawn from Co-Host." if interaction.user in self.co_hosts else "You are now a Co-Host!",
+        ephemeral=True
+    )
 
     @discord.ui.button(label="Attending", style=discord.ButtonStyle.green, emoji="✅")
-    async def attending_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.status != "Upcoming":
-            await interaction.response.send_message("❌ You can no longer mark yourself as attending.", ephemeral=True)
-            return
+async def attending_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    if self.status != "Upcoming":
+        await interaction.response.send_message("❌ You can no longer mark yourself as attending.", ephemeral=True)
+        return
 
-        if self.division == "Response":
-            allowed_role = RESPONSE_TRAINEE_ROLE_ID
-        else:
-            allowed_role = ROADS_TRAINEE_ROLE_ID
+    if self.division == "Response":
+        allowed_role = RESPONSE_TRAINEE_ROLE_ID
+    else:
+        allowed_role = ROADS_TRAINEE_ROLE_ID
 
-        if not any(r.id == allowed_role for r in interaction.user.roles):
-            await interaction.response.send_message(
-                "❌ Only the correct Trainee role can mark themselves as attending.", 
-                ephemeral=True
-            )
-            return
+    if not any(r.id == allowed_role for r in interaction.user.roles):
+        await interaction.response.send_message(
+            "❌ Only the correct Trainee role can mark themselves as attending.", 
+            ephemeral=True
+        )
+        return
 
-        if interaction.user in self.attendees:
-            await interaction.response.send_message("❌ You have already marked yourself as attending.", ephemeral=True)
-            return
-
+    # Toggle logic
+    if interaction.user in self.attendees:
+        self.attendees.remove(interaction.user)
+        button.label = "Attending"
+        button.emoji = "✅"
+        message = "You have withdrawn from attending."
+    else:
         self.attendees.append(interaction.user)
-        await interaction.message.edit(embed=self.create_embed(), view=self)
-        await interaction.response.send_message("You are now marked as attending!", ephemeral=True)
+        button.label = "Withdraw"
+        button.emoji = "❌"
+        message = "You are now marked as attending!"
+
+    await interaction.message.edit(embed=self.create_embed(), view=self)
+    await interaction.response.send_message(message, ephemeral=True)
 
     @discord.ui.button(label="End Training", style=discord.ButtonStyle.red, emoji="🛑")
     async def end_button(self, interaction: discord.Interaction, button: discord.ui.Button):
