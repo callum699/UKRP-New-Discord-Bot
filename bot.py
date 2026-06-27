@@ -1257,7 +1257,7 @@ class TrainingView(discord.ui.View):
                 f"If you can no longer attend the training, please press the \"Attending\" button again."
             )
             vc_field_name = "Roads Training VC"
-            vc_link = "https://discord.com/channels/1457118167078801631/REPLACE_WITH_ROADS_VC_ID"
+            vc_link = f"https://discord.com/channels/1457118167078801631/{ROADS_TRAINING_VC_ID}"
 
         color = discord.Color.orange()
         if self.status == "In Progress":
