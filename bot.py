@@ -1325,22 +1325,18 @@ class TrainingView(discord.ui.View):
             return
 
         if interaction.user in self.co_hosts:
+            # Withdraw
             self.co_hosts.remove(interaction.user)
-            button.label = "Attend as Co-Host"
-            button.emoji = "👥"
+            await interaction.message.edit(embed=self.create_embed(), view=self)
+            await interaction.response.send_message("You have withdrawn from Co-Host.", ephemeral=True)
         else:
             if len(self.co_hosts) >= 3:
                 await interaction.response.send_message("❌ Maximum of 3 Co-Hosts allowed.", ephemeral=True)
                 return
-            self.co_hosts.append(interaction.user)
-            button.label = "Withdraw"
-            button.emoji = "❌"
 
-        await interaction.message.edit(embed=self.create_embed(), view=self)
-        await interaction.response.send_message(
-            "You have withdrawn from Co-Host." if interaction.user not in self.co_hosts else "You are now a Co-Host!",
-            ephemeral=True
-        )
+            self.co_hosts.append(interaction.user)
+            await interaction.message.edit(embed=self.create_embed(), view=self)
+            await interaction.response.send_message("You are now a Co-Host!", ephemeral=True)
 
     @discord.ui.button(label="Attending", style=discord.ButtonStyle.green, emoji="✅")
     async def attending_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1361,18 +1357,14 @@ class TrainingView(discord.ui.View):
             return
 
         if interaction.user in self.attendees:
+            # Withdraw
             self.attendees.remove(interaction.user)
-            button.label = "Attending"
-            button.emoji = "✅"
-            message = "You have withdrawn from attending."
+            await interaction.message.edit(embed=self.create_embed(), view=self)
+            await interaction.response.send_message("You have withdrawn from attending.", ephemeral=True)
         else:
             self.attendees.append(interaction.user)
-            button.label = "Withdraw"
-            button.emoji = "❌"
-            message = "You are now marked as attending!"
-
-        await interaction.message.edit(embed=self.create_embed(), view=self)
-        await interaction.response.send_message(message, ephemeral=True)
+            await interaction.message.edit(embed=self.create_embed(), view=self)
+            await interaction.response.send_message("You are now marked as attending!", ephemeral=True)
 
     @discord.ui.button(label="End Training", style=discord.ButtonStyle.red, emoji="🛑")
     async def end_button(self, interaction: discord.Interaction, button: discord.ui.Button):
