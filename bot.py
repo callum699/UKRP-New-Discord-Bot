@@ -1244,12 +1244,18 @@ class TrainingView(discord.ui.View):
     def create_embed(self):
         if self.division == "Response":
             title = f"Response Training — {self.status}"
-            description = f"A training for the Response Division will be held at {self.time}. Please make sure you are in-game, on the Police team in your uniform and sat down in the briefing room."
+            description = (
+                f"A training for the Response Division will be held at {self.time}. Please make sure you are in-game, on the Police team in your uniform and sat down in the briefing room."
+                f"If you can no longer attend the training please press the \"Attending\" button again."
+            )
             vc_field_name = "Response Training VC"
             vc_link = f"https://discord.com/channels/1457118167078801631/{RESPONSE_TRAINING_VC_ID}"
         else:
             title = f"Roads Training — {self.status}"
-            description = f"A training for the Roads Policing Unit will be held at {self.time}. Please make sure you are in-game and ready."
+            description = (
+                f"A training for the Roads Policing Unit will be held at {self.time}. Please make sure you are in-game and ready."
+                f"If you can no longer attend the training please press the \"Attending\" button again."
+            )
             vc_field_name = "Roads Training VC"
             vc_link = "https://discord.com/channels/1457118167078801631/REPLACE_WITH_ROADS_VC_ID"
 
