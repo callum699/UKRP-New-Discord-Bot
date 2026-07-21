@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from discord.ui import Button, View
 
 import aiosqlite
 import time
@@ -650,72 +649,6 @@ async def on_member_update(before: discord.Member, after: discord.Member):
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("DELETE FROM active_loas WHERE user_id = ?", (str(after.id),))
             await db.commit()
-
-@bot.event
-async def on_message(message: discord.Message):
-    # Ignore regular bot messages, look only for our unique webhook system flag
-    if not message.author.bot or not message.content.startswith("[PCEP_SYSTEM_FLAG:"):
-        await bot.process_commands(message)
-        return
-
-    try:
-        # Extract applicant ID from the webhook text string
-        applicant_id = message.content.replace("[PCEP_SYSTEM_FLAG:", "").replace("]", "").strip()
-
-        # Build native interaction buttons
-        view = View(timeout=None)
-        view.add_item(Button(style=discord.ButtonStyle.success, label="Accept Applicant", custom_id=f"pcep_accept_{applicant_id}"))
-        view.add_item(Button(style=discord.ButtonStyle.danger, label="Reject Applicant", custom_id=f"pcep_reject_{applicant_id}"))
-
-        # Edit the message to clear the system tag text and apply buttons
-        await message.edit(content=None, view=view)
-    except Exception as e:
-        print(f"Error appending button layout: {e}")
-
-    await bot.process_commands(message)
-
-
-@bot.event
-async def on_interaction(interaction: discord.Interaction):
-    if interaction.type != discord.InteractionType.component:
-        return
-
-    custom_id = interaction.data.get("custom_id", "")
-    reviewer = interaction.user.name
-
-    if custom_id.startswith("pcep_accept_"):
-        user_id_str = custom_id.replace("pcep_accept_", "")
-        if user_id_str == "unknown" or not user_id_str:
-            await interaction.response.send_message("❌ Error: Valid user id missing.", ephemeral=True)
-            return
-
-        await interaction.response.defer()
-        roles_to_assign = [1457118167196504127, 1457118167196504126, 1457118167095841070, 1461655828321931336, 1457118167150100666, 1457118167116546081]
-
-        try:
-            guild = interaction.guild
-            member = await guild.fetch_member(int(user_id_str))
-            for role_id in roles_to_assign:
-                role = guild.get_role(role_id)
-                if role:
-                    await member.add_roles(role)
-
-            message = interaction.message
-            if message and message.embeds:
-                embed = message.embeds[0]
-                embed.description = f"✅ **Approved** by @{reviewer}. All 6 targeted roles assigned successfully."
-                await interaction.edit_original_response(embeds=[embed], view=None)
-        except Exception as e:
-            await interaction.followup.send("❌ Error altering roles: Check role hierarchies.", ephemeral=True)
-
-    elif custom_id.startswith("pcep_reject_"):
-        await interaction.response.defer()
-        message = interaction.message
-        if message and message.embeds:
-            embed = message.embeds[0]
-            embed.description = f"❌ **Rejected** by @{reviewer}."
-            await interaction.edit_original_response(embeds=[embed], view=None)
-
 
 # ================== COMMANDS ==================
 
