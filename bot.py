@@ -599,6 +599,8 @@ async def on_ready():
     await setup_db()
     bot.loop.create_task(temp_role_cleanup_loop())
     bot.loop.create_task(loa_cleanup_loop())
+    bot.add_view(LOARequestView())
+    print("✅ LOA Request View registered as persistent")
     
     # Global sync - makes commands available in ALL servers
     await bot.tree.sync()
@@ -910,7 +912,7 @@ async def temproles(interaction: discord.Interaction, user: discord.User):
 LOA_ROLE_ID = 1457118167204630724
 
 class LOARequestView(discord.ui.View):
-    def __init__(self, requester: discord.Member, reason: str, length: str):
+    def __init__(self, requester: discord.Member = None, reason: str = None, length: str = None):
         super().__init__(timeout=None)
         self.requester = requester
         self.reason = reason
@@ -921,7 +923,24 @@ class LOARequestView(discord.ui.View):
             return True
         return any(role.id == LOA_TRACKER_ROLE_ID for role in user.roles)
 
-    @discord.ui.button(label="Approve LOA", style=discord.ButtonStyle.green)
+    async def get_loa_data(self, interaction: discord.Interaction):
+        """Recover LOA data from the embed (needed after bot restart)"""
+        if self.requester and self.reason and self.length:
+            return self.requester, self.reason, self.length
+
+        # Recover from embed after restart
+        embed = interaction.message.embeds[0]
+        requester_mention = embed.fields[0].value          # Submitted By
+        length = embed.fields[1].value                     # Duration
+        reason = embed.fields[2].value                     # Reason
+
+        # Extract user ID from mention
+        requester_id = int(requester_mention.strip("<@!>").split(">")[0].replace("!", ""))
+        requester = interaction.guild.get_member(requester_id) or await interaction.guild.fetch_member(requester_id)
+
+        return requester, reason, length
+
+    @discord.ui.button(label="Approve LOA", style=discord.ButtonStyle.green, custom_id="loa_approve")
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not self.can_manage_loa(interaction.user):
             await interaction.response.send_message("❌ You don't have permission to approve LOAs.", ephemeral=True)
@@ -929,36 +948,45 @@ class LOARequestView(discord.ui.View):
 
         await interaction.response.defer()
 
+        requester, reason, length = await self.get_loa_data(interaction)
+
         guild = interaction.guild
-        member = guild.get_member(self.requester.id)
+        member = guild.get_member(requester.id)
         loa_role = guild.get_role(LOA_ROLE_ID)
 
-        # Calculate when the LOA should end
-        days = parse_loa_duration(self.length)
+        days = parse_loa_duration(length)
         end_time = int(time.time()) + (days * 86400)
 
         if member and loa_role:
             try:
-                await member.add_roles(loa_role, reason=f"LOA Approved • {self.length}")
+                await member.add_roles(loa_role, reason=f"LOA Approved • {length}")
 
-                # === THIS IS THE MISSING PART ===
-                # Save the LOA to the database so /activeloas can see it
+                # Save to active_loas (for /activeloas)
                 async with aiosqlite.connect(DB_NAME) as db:
                     await db.execute("""INSERT OR REPLACE INTO active_loas 
                         (user_id, approved_by, start_time, end_time, reason, length)
                         VALUES (?, ?, ?, ?, ?, ?)""",
-                        (str(self.requester.id), str(interaction.user.id), 
-                         int(time.time()), end_time, self.reason, self.length))
+                        (str(requester.id), str(interaction.user.id), 
+                         int(time.time()), end_time, reason, length))
                     await db.commit()
+
+                # === NEW: Also save as temporary role so /temproles works ===
+                await add_temp_role(
+                    user_id=requester.id,
+                    guild_id=guild.id,
+                    role_id=LOA_ROLE_ID,
+                    expires_at=end_time,
+                    added_by=interaction.user.id
+                )
 
             except Exception as e:
                 print(f"LOA approve error: {e}")
 
-        # Update main embed
+        # Update embed
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.green()
         embed.set_field_at(3, name="Status", value=f"Approved by {interaction.user.mention}", inline=False)
-        embed.set_footer(text=f"UKRP LOA Request - Approved")
+        embed.set_footer(text="UKRP LOA Request - Approved")
 
         self.clear_items()
         self.add_item(discord.ui.Button(
@@ -969,21 +997,20 @@ class LOARequestView(discord.ui.View):
 
         await interaction.message.edit(embed=embed, view=self)
 
-        # === Send Log to LOA Log Channel ===
+        # Log
         log_channel = bot.get_channel(LOA_LOG_CHANNEL_ID)
         if log_channel:
             log_embed = discord.Embed(
                 title="UKRP LOA Request Log",
                 color=discord.Color.green(),
-                description=f"{self.requester.mention}'s LOA request has been accepted by {interaction.user.mention}"
+                description=f"{requester.mention}'s LOA request has been accepted by {interaction.user.mention}"
             )
-            log_embed.add_field(name="Duration", value=self.length, inline=False)
-            log_embed.add_field(name="Reason", value=self.reason, inline=False)
+            log_embed.add_field(name="Duration", value=length, inline=False)
+            log_embed.add_field(name="Reason", value=reason, inline=False)
             log_embed.add_field(name="", value=f"Today at {discord.utils.format_dt(discord.utils.utcnow(), style='t')}", inline=False)
-            
             await log_channel.send(embed=log_embed)
 
-    @discord.ui.button(label="Deny LOA", style=discord.ButtonStyle.red)
+    @discord.ui.button(label="Deny LOA", style=discord.ButtonStyle.red, custom_id="loa_deny")
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not self.can_manage_loa(interaction.user):
             await interaction.response.send_message("❌ You don't have permission to deny LOAs.", ephemeral=True)
@@ -994,7 +1021,7 @@ class LOARequestView(discord.ui.View):
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.red()
         embed.set_field_at(3, name="Status", value=f"Denied by {interaction.user.mention}", inline=False)
-        embed.set_footer(text=f"UKRP LOA Request - Denied")
+        embed.set_footer(text="UKRP LOA Request - Denied")
 
         self.clear_items()
         self.add_item(discord.ui.Button(
@@ -1005,6 +1032,7 @@ class LOARequestView(discord.ui.View):
 
         await interaction.message.edit(embed=embed, view=self)
 
+# ================== /loarequest COMMAND ==================
 
 @bot.tree.command(name="loarequest", description="Submit a Leave of Absence request")
 @app_commands.describe(
@@ -1014,7 +1042,6 @@ class LOARequestView(discord.ui.View):
 async def loarequest(interaction: discord.Interaction, reason: str, length: str):
     member = interaction.guild.get_member(interaction.user.id)
 
-    # Check for restricted roles
     if member:
         if any(role.id == INACTIVITY_WARNING_ROLE_ID for role in member.roles):
             await interaction.response.send_message("❌ You cannot request LOA while having an Inactivity Warning.", ephemeral=True)
@@ -1023,22 +1050,18 @@ async def loarequest(interaction: discord.Interaction, reason: str, length: str)
             await interaction.response.send_message("❌ You are currently on LOA Cooldown and cannot request a new LOA.", ephemeral=True)
             return
 
-    # Check permission to request
     if not has_request_role(interaction.user) and not is_admin(interaction.user):
         await interaction.response.send_message("❌ You cannot request LOAs", ephemeral=True)
         return
 
-    # Validate duration
     try:
         days = parse_loa_duration(length)
-
         if days < 7:
             await interaction.response.send_message("❌ Minimum LOA is 7 days.", ephemeral=True)
             return
         if days > 28:
             await interaction.response.send_message("❌ Maximum LOA is 4 weeks (28 days).", ephemeral=True)
             return
-
     except:
         await interaction.response.send_message("❌ Invalid format. Use: `7 days`, `2 weeks`, `10 days`, `4 weeks`", ephemeral=True)
         return
