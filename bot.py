@@ -9,6 +9,7 @@ import re
 from datetime import timedelta, datetime, timezone
 import zoneinfo
 import traceback
+import aiohttp
 
 from dotenv import load_dotenv
 import os
@@ -87,6 +88,43 @@ LOA_ROLE_ID = 1457118167204630724
 
 DB_NAME = "globalbans.db"
 
+# ================== ROBLOX RANKING ==================
+ROBLOX_API_KEY = os.getenv("ROBLOX_API_KEY")
+ROBLOX_GROUP_ID = 767871226
+
+GROUP_RANKING_PERMISSIONS_ROLE_ID = 1457118167204630722
+
+# Rank number → Discord Role ID
+ROBLOX_RANK_TO_DISCORD_ROLE = {
+    2:  1457118167196504127,  # Student Constable
+    5:  1457118167196504128,  # Constable
+    10: 1457118167196504129,  # Sergeant
+    15: 1457118167196504130,  # Inspector
+    20: 1457118167196504131,  # Chief Inspector
+    25: 1457118167196504132,  # Superintendent
+    30: 1457118167196504133,  # Chief Superintendent
+    35: 1457118167204630726,  # Assistant Chief Constable
+    40: 1457118167204630727,  # Deputy Chief Constable
+    45: 1457118167204630728,  # Chief Constable
+}
+
+# Rank number → Rank Name (for display)
+ROBLOX_RANK_NAMES = {
+    2:  "Student Constable",
+    5:  "Constable",
+    10: "Sergeant",
+    15: "Inspector",
+    20: "Chief Inspector",
+    25: "Superintendent",
+    30: "Chief Superintendent",
+    35: "Assistant Chief Constable",
+    40: "Deputy Chief Constable",
+    45: "Chief Constable",
+}
+
+# Sorted list of rank numbers (lowest → highest) for promote/demote
+SORTED_RANKS = sorted(ROBLOX_RANK_NAMES.keys())
+
 # ================== PERMISSION HELPERS ==================
 def has_request_role(user):
     return any(role.id in REQUEST_ROLE_IDS for role in user.roles)
@@ -149,6 +187,84 @@ async def _save_backup_to_db(user_id: str, guild_id: str, backup_type: str, role
             (user_id, guild_id, backup_type, roles_str, int(time.time()))
         )
         await db.commit()
+
+async def get_roblox_id_from_discord(discord_user_id: int) -> int | None:
+    """Look up Roblox ID using Bloxlink"""
+    url = f"https://api.blox.link/v4/public/guilds/{GUILD_ID}/discord-to-roblox/{discord_user_id}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return int(data.get("robloxID") or data.get("robloxId") or 0) or None
+    except Exception as e:
+        print(f"Bloxlink lookup error: {e}")
+    return None
+
+
+async def set_roblox_rank(roblox_user_id: int, rank_number: int) -> tuple[bool, str]:
+    """
+    Set a user's rank in the Roblox group using the Group API Key.
+    Returns (success, message)
+    """
+    if not ROBLOX_API_KEY:
+        return False, "ROBLOX_API_KEY is not set in .env"
+
+    url = f"https://apis.roblox.com/cloud/v2/groups/{ROBLOX_GROUP_ID}/memberships/{roblox_user_id}"
+    headers = {
+        "x-api-key": ROBLOX_API_KEY,
+        "Content-Type": "application/json"
+    }
+    # Open Cloud expects the role in a specific format
+    payload = {
+        "role": f"groups/{ROBLOX_GROUP_ID}/roles/{rank_number}"
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(url, headers=headers, json=payload) as resp:
+                if resp.status in (200, 204):
+                    return True, "Rank updated successfully"
+                text = await resp.text()
+                return False, f"Roblox API error {resp.status}: {text[:300]}"
+    except Exception as e:
+        return False, f"Request failed: {e}"
+
+
+async def update_discord_roles_for_rank(member: discord.Member, new_rank: int):
+    """Remove old ranking roles and give the correct one for the new rank"""
+    guild = member.guild
+    bot_top = guild.me.top_role
+
+    # All ranking Discord roles
+    all_ranking_role_ids = set(ROBLOX_RANK_TO_DISCORD_ROLE.values())
+
+    roles_to_remove = []
+    for role in member.roles:
+        if role.id in all_ranking_role_ids and not role.managed and role.position < bot_top.position:
+            roles_to_remove.append(role)
+
+    if roles_to_remove:
+        try:
+            await member.remove_roles(*roles_to_remove, reason="Rank change")
+        except Exception as e:
+            print(f"Failed to remove old ranking roles: {e}")
+
+    # Add the new role
+    new_role_id = ROBLOX_RANK_TO_DISCORD_ROLE.get(new_rank)
+    if new_role_id:
+        new_role = guild.get_role(new_role_id)
+        if new_role and new_role.position < bot_top.position:
+            try:
+                await member.add_roles(new_role, reason="Rank change")
+            except Exception as e:
+                print(f"Failed to add new ranking role: {e}")
+
+
+def can_use_ranking_commands(user: discord.Member) -> bool:
+    if user.id in OWNER_IDS or is_admin(user):
+        return True
+    return any(role.id == GROUP_RANKING_PERMISSIONS_ROLE_ID for role in user.roles)
 
 async def restore_from_backup(member: discord.Member, backup_type: str, special_role_id: int):
     guild = member.guild
@@ -1100,6 +1216,150 @@ async def scamlink(interaction: discord.Interaction, user: discord.User, delete_
         except:
             pass
     await interaction.followup.send(f"🛑 Scam action complete\n🔇 Timed out in: {success_timeout} servers\n🗑️ Messages deleted: {success_messages}")
+
+@bot.tree.command(name="setrank", description="Set a user's rank in the Roblox group")
+@app_commands.describe(
+    user="Discord user to rank",
+    rank="Rank name (e.g. Constable, Sergeant, Inspector...)"
+)
+@app_commands.choices(rank=[
+    app_commands.Choice(name=name, value=str(num))
+    for num, name in ROBLOX_RANK_NAMES.items()
+])
+async def setrank(interaction: discord.Interaction, user: discord.Member, rank: str):
+    if not can_use_ranking_commands(interaction.user):
+        await interaction.response.send_message("❌ You don't have permission to use ranking commands.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+
+    rank_number = int(rank)
+    rank_name = ROBLOX_RANK_NAMES.get(rank_number, "Unknown")
+
+    roblox_id = await get_roblox_id_from_discord(user.id)
+    if not roblox_id:
+        await interaction.followup.send(
+            f"❌ Could not find a linked Roblox account for {user.mention}.\n"
+            "Make sure they are verified with Bloxlink."
+        )
+        return
+
+    success, message = await set_roblox_rank(roblox_id, rank_number)
+    if not success:
+        await interaction.followup.send(f"❌ Failed to set rank in Roblox group.\n`{message}`")
+        return
+
+    await update_discord_roles_for_rank(user, rank_number)
+
+    embed = discord.Embed(title="Rank Updated", color=discord.Color.green())
+    embed.add_field(name="User", value=f"{user.mention}", inline=False)
+    embed.add_field(name="New Rank", value=rank_name, inline=True)
+    embed.add_field(name="Rank Number", value=str(rank_number), inline=True)
+    embed.set_footer(text=f"Action by {interaction.user.display_name}")
+    await interaction.followup.send(embed=embed)
+
+
+@bot.tree.command(name="promote", description="Promote a user one rank in the Roblox group")
+@app_commands.describe(user="Discord user to promote")
+async def promote(interaction: discord.Interaction, user: discord.Member):
+    if not can_use_ranking_commands(interaction.user):
+        await interaction.response.send_message("❌ You don't have permission to use ranking commands.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+
+    # Find current rank from their Discord roles
+    current_rank = None
+    for rank_num, role_id in ROBLOX_RANK_TO_DISCORD_ROLE.items():
+        if any(r.id == role_id for r in user.roles):
+            current_rank = rank_num
+            break
+
+    if current_rank is None:
+        # Default to lowest if no ranking role found
+        current_rank = SORTED_RANKS[0]
+
+    try:
+        idx = SORTED_RANKS.index(current_rank)
+        if idx >= len(SORTED_RANKS) - 1:
+            await interaction.followup.send(f"❌ {user.mention} is already at the highest rank.")
+            return
+        new_rank = SORTED_RANKS[idx + 1]
+    except ValueError:
+        new_rank = SORTED_RANKS[0]
+
+    roblox_id = await get_roblox_id_from_discord(user.id)
+    if not roblox_id:
+        await interaction.followup.send(
+            f"❌ Could not find a linked Roblox account for {user.mention}.\n"
+            "Make sure they are verified with Bloxlink."
+        )
+        return
+
+    success, message = await set_roblox_rank(roblox_id, new_rank)
+    if not success:
+        await interaction.followup.send(f"❌ Failed to promote in Roblox group.\n`{message}`")
+        return
+
+    await update_discord_roles_for_rank(user, new_rank)
+
+    embed = discord.Embed(title="User Promoted", color=discord.Color.green())
+    embed.add_field(name="User", value=user.mention, inline=False)
+    embed.add_field(name="New Rank", value=ROBLOX_RANK_NAMES[new_rank], inline=True)
+    embed.set_footer(text=f"Action by {interaction.user.display_name}")
+    await interaction.followup.send(embed=embed)
+
+
+@bot.tree.command(name="demote", description="Demote a user one rank in the Roblox group")
+@app_commands.describe(user="Discord user to demote")
+async def demote(interaction: discord.Interaction, user: discord.Member):
+    if not can_use_ranking_commands(interaction.user):
+        await interaction.response.send_message("❌ You don't have permission to use ranking commands.", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+
+    current_rank = None
+    for rank_num, role_id in ROBLOX_RANK_TO_DISCORD_ROLE.items():
+        if any(r.id == role_id for r in user.roles):
+            current_rank = rank_num
+            break
+
+    if current_rank is None:
+        await interaction.followup.send(f"❌ {user.mention} has no ranking role to demote from.")
+        return
+
+    try:
+        idx = SORTED_RANKS.index(current_rank)
+        if idx <= 0:
+            await interaction.followup.send(f"❌ {user.mention} is already at the lowest rank.")
+            return
+        new_rank = SORTED_RANKS[idx - 1]
+    except ValueError:
+        await interaction.followup.send("❌ Could not determine current rank.")
+        return
+
+    roblox_id = await get_roblox_id_from_discord(user.id)
+    if not roblox_id:
+        await interaction.followup.send(
+            f"❌ Could not find a linked Roblox account for {user.mention}.\n"
+            "Make sure they are verified with Bloxlink."
+        )
+        return
+
+    success, message = await set_roblox_rank(roblox_id, new_rank)
+    if not success:
+        await interaction.followup.send(f"❌ Failed to demote in Roblox group.\n`{message}`")
+        return
+
+    await update_discord_roles_for_rank(user, new_rank)
+
+    embed = discord.Embed(title="User Demoted", color=discord.Color.orange())
+    embed.add_field(name="User", value=user.mention, inline=False)
+    embed.add_field(name="New Rank", value=ROBLOX_RANK_NAMES[new_rank], inline=True)
+    embed.set_footer(text=f"Action by {interaction.user.display_name}")
+    await interaction.followup.send(embed=embed)
+
 
 # ================== RUN ==================
 bot.run(TOKEN)
