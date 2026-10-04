@@ -328,17 +328,22 @@ async def apply_police_disciplinary(
         backup_type = "removal"
 
     target_role = guild.get_role(target_role_id)
+
     if not ver_header or not verified or not target_role:
-        await interaction.followup.send("❌ Required roles not found in server.")
+        missing = []
+        if not ver_header: missing.append("Verification Header")
+        if not verified: missing.append("Verified")
+        if not target_role: missing.append("Target Role")
+        await interaction.followup.send(f"❌ Required roles not found: {', '.join(missing)}")
         return
 
     keep_roles = [ver_header, verified]
 
     try:
-        # Save current roles BEFORE stripping
+        # 1. Save current roles
         await save_role_backup(member, backup_type)
 
-        # Strip to only verification roles
+        # 2. Strip to only verification roles
         await member.edit(roles=keep_roles, reason=f"Police {action} by {interaction.user}")
 
         if is_permanent:
@@ -346,19 +351,28 @@ async def apply_police_disciplinary(
             role_text = f"{target_role.mention} (Permanent)"
         else:
             if not duration:
-                await interaction.followup.send("❌ Duration is required.")
+                await interaction.followup.send("❌ Duration is required (e.g. 7d, 28d).")
                 return
-            seconds = parse_duration(duration)
+
+            try:
+                seconds = parse_duration(duration)
+            except Exception:
+                await interaction.followup.send("❌ Invalid duration format. Use e.g. `7d`, `14d`, `28d`.")
+                return
+
             if seconds <= 0:
                 await interaction.followup.send("❌ Invalid duration.")
                 return
+
             expires_at = int(time.time()) + seconds
             await member.add_roles(target_role, reason=f"Police Removal - {target_role.name}")
             await add_temp_role(member.id, guild.id, target_role.id, expires_at, interaction.user.id)
             role_text = f"{target_role.mention} (Temporary - {duration})"
-            
+
+        # 3. Cross-guild removal
         await remove_cross_guild_roles(member.id)
 
+        # 4. Success embed
         embed = discord.Embed(title=embed_title, color=embed_color)
         embed.add_field(name="Target User", value=f"{member.mention} (`{member.id}`)", inline=False)
         embed.add_field(name="Role Given", value=role_text, inline=True)
@@ -369,8 +383,10 @@ async def apply_police_disciplinary(
         await interaction.followup.send(embed=embed)
 
     except Exception as e:
-        print(f"Error in police {action}: {e}")
-        await interaction.followup.send("❌ Something went wrong.")
+        import traceback
+        error_msg = traceback.format_exc()
+        print(f"❌ FULL ERROR in police {action}:\n{error_msg}")
+        await interaction.followup.send(f"❌ Something went wrong.\n```{str(e)[:1500]}```")
 
 
 # ================== DURATION PARSER ==================
