@@ -100,7 +100,7 @@ def has_request_role(user):
     return any(role.id in REQUEST_ROLE_IDS for role in user.roles)
 
 def is_admin(user):
-    if user.id == OWNER_IDS:
+    if user.id in OWNER_IDS:
         return True
     return any(role.id in ADMIN_ROLE_IDS for role in user.roles)
 
@@ -525,8 +525,10 @@ async def get_all_bans():
 
 async def add_temp_role(user_id: int, guild_id: int, role_id: int, expires_at: int, added_by: int):
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("""INSERT INTO temp_roles (user_id, guild_id, role_id, expires_at, added_by, added_at)
-            VALUES (?, ?, ?, ?, ?, ?)""", (str(user_id), str(guild_id), str(role_id), expires_at, str(added_by), int(time.time())))
+        await db.execute("""INSERT OR REPLACE INTO temp_roles 
+            (user_id, guild_id, role_id, expires_at, added_by)
+            VALUES (?, ?, ?, ?, ?)""",
+            (str(user_id), str(guild_id), str(role_id), expires_at, str(added_by)))
         await db.commit()
 
 async def get_user_temp_roles(user_id: int, guild_id: int = None):
