@@ -245,31 +245,67 @@ async def resolve_roblox_id(discord_user: discord.Member, roblox_username: str =
         "They are not verified with Bloxlink. Run the command again and fill in **roblox_username**."
     )
 
-async def set_roblox_rank(roblox_user_id: int, rank_number: int) -> tuple[bool, str]:
-    """
-    Set a user's rank in the Roblox group using the Group API Key.
-    Returns (success, message)
-    """
+async def set_roblox_rank(roblox_user_id: int, rank_number: int):
+    """Set a user's rank in the Roblox group using a User API key."""
     if not ROBLOX_API_KEY:
         return False, "ROBLOX_API_KEY is not set in .env"
 
-    url = f"https://apis.roblox.com/cloud/v2/groups/{ROBLOX_GROUP_ID}/memberships/{roblox_user_id}"
-    headers = {
-        "x-api-key": ROBLOX_API_KEY,
-        "Content-Type": "application/json"
-    }
-    # Open Cloud expects the role in a specific format
-    payload = {
-        "role": f"groups/{ROBLOX_GROUP_ID}/roles/{rank_number}"
-    }
+    rank_name = ROBLOX_RANK_NAMES.get(rank_number)
+    if not rank_name:
+        return False, f"Unknown rank number {rank_number}"
+
+    headers = {"x-api-key": ROBLOX_API_KEY}
+    json_headers = {**headers, "Content-Type": "application/json"}
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.patch(url, headers=headers, json=payload) as resp:
+            # 1. Find the Roblox role ID by name
+            roles_url = f"https://apis.roblox.com/cloud/v2/groups/{ROBLOX_GROUP_ID}/roles?maxPageSize=50"
+            async with session.get(roles_url, headers=headers) as resp:
+                text = await resp.text()
+                if resp.status != 200:
+                    return False, f"Could not list roles ({resp.status}): {text[:300]}"
+                roles = (await resp.json()).get("groupRoles") or []
+
+            role_id = None
+            for role in roles:
+                if (role.get("displayName") or role.get("name") or "").lower() == rank_name.lower():
+                    path = role.get("path") or ""
+                    role_id = path.split("/")[-1] if path else str(role.get("id"))
+                    break
+
+            if not role_id:
+                return False, f"Could not find Roblox role named '{rank_name}'."
+
+            # 2. Find this user's membership ID
+            filter_q = f"user == 'users/{roblox_user_id}'"
+            memberships_url = (
+                f"https://apis.roblox.com/cloud/v2/groups/{ROBLOX_GROUP_ID}/memberships"
+                f"?maxPageSize=10&filter={filter_q}"
+            )
+            async with session.get(memberships_url, headers=headers) as resp:
+                text = await resp.text()
+                if resp.status != 200:
+                    return False, f"Could not find membership ({resp.status}): {text[:300]}"
+                memberships = (await resp.json()).get("groupMemberships") or []
+
+            if not memberships:
+                return False, "That Roblox user is not in the group."
+
+            membership_path = memberships[0].get("path") or ""
+            membership_id = membership_path.split("/")[-1]
+            if not membership_id:
+                return False, "Could not read membership ID."
+
+            # 3. Update the role
+            patch_url = f"https://apis.roblox.com/cloud/v2/groups/{ROBLOX_GROUP_ID}/memberships/{membership_id}"
+            payload = {"role": f"groups/{ROBLOX_GROUP_ID}/roles/{role_id}"}
+            async with session.patch(patch_url, headers=json_headers, json=payload) as resp:
+                text = await resp.text()
                 if resp.status in (200, 204):
                     return True, "Rank updated successfully"
-                text = await resp.text()
-                return False, f"Roblox API error {resp.status}: {text[:300]}"
+                return False, f"Roblox API error {resp.status}: {text[:400]}"
+
     except Exception as e:
         return False, f"Request failed: {e}"
 
