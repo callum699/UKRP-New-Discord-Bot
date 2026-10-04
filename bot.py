@@ -100,7 +100,7 @@ def has_request_role(user):
     return any(role.id in REQUEST_ROLE_IDS for role in user.roles)
 
 def is_admin(user):
-    if user.id in OWNER_IDS:
+    if user.id in OWNER_IDS:          # ← change == to in
         return True
     return any(role.id in ADMIN_ROLE_IDS for role in user.roles)
 
