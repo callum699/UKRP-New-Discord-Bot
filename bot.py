@@ -201,6 +201,49 @@ async def get_roblox_id_from_discord(discord_user_id: int) -> int | None:
         print(f"Bloxlink lookup error: {e}")
     return None
 
+async def get_roblox_id_from_username(username: str):
+    """Resolve a Roblox username to a user ID."""
+    username = username.strip().lstrip("@")
+    if not username:
+        return None
+
+    url = "https://users.roblox.com/v1/usernames/users"
+    payload = {"usernames": [username], "excludeBannedUsers": False}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+                users = data.get("data") or []
+                if not users:
+                    return None
+                return int(users[0]["id"])
+    except Exception as e:
+        print(f"Roblox username lookup error: {e}")
+        return None
+
+
+async def resolve_roblox_id(discord_user: discord.Member, roblox_username: str = None):
+    """
+    Prefer Bloxlink. If that fails, use the optional Roblox username.
+    Returns (roblox_id, source) or (None, error_message)
+    """
+    roblox_id = await get_roblox_id_from_discord(discord_user.id)
+    if roblox_id:
+        return roblox_id, "Bloxlink"
+
+    if roblox_username:
+        roblox_id = await get_roblox_id_from_username(roblox_username)
+        if roblox_id:
+            return roblox_id, f"username {roblox_username}"
+        return None, f"Could not find Roblox user `{roblox_username}`."
+
+    return None, (
+        f"Could not find a linked Roblox account for {discord_user.mention}.\n"
+        "They are not verified with Bloxlink. Run the command again and fill in **roblox_username**."
+    )
 
 async def set_roblox_rank(roblox_user_id: int, rank_number: int) -> tuple[bool, str]:
     """
@@ -1220,28 +1263,30 @@ async def scamlink(interaction: discord.Interaction, user: discord.User, delete_
 @bot.tree.command(name="setrank", description="Set a user's rank in the Roblox group")
 @app_commands.describe(
     user="Discord user to rank",
-    rank="Rank name (e.g. Constable, Sergeant, Inspector...)"
+    rank="Rank name",
+    roblox_username="Optional Roblox username if Bloxlink cannot find them"
 )
 @app_commands.choices(rank=[
     app_commands.Choice(name=name, value=str(num))
     for num, name in ROBLOX_RANK_NAMES.items()
 ])
-async def setrank(interaction: discord.Interaction, user: discord.Member, rank: str):
+async def setrank(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    rank: str,
+    roblox_username: str = None
+):
     if not can_use_ranking_commands(interaction.user):
         await interaction.response.send_message("❌ You don't have permission to use ranking commands.", ephemeral=True)
         return
 
     await interaction.response.defer(thinking=True)
-
     rank_number = int(rank)
     rank_name = ROBLOX_RANK_NAMES.get(rank_number, "Unknown")
 
-    roblox_id = await get_roblox_id_from_discord(user.id)
+    roblox_id, source = await resolve_roblox_id(user, roblox_username)
     if not roblox_id:
-        await interaction.followup.send(
-            f"❌ Could not find a linked Roblox account for {user.mention}.\n"
-            "Make sure they are verified with Bloxlink."
-        )
+        await interaction.followup.send(f"❌ {source}")
         return
 
     success, message = await set_roblox_rank(roblox_id, rank_number)
@@ -1252,23 +1297,31 @@ async def setrank(interaction: discord.Interaction, user: discord.Member, rank: 
     await update_discord_roles_for_rank(user, rank_number)
 
     embed = discord.Embed(title="Rank Updated", color=discord.Color.green())
-    embed.add_field(name="User", value=f"{user.mention}", inline=False)
+    embed.add_field(name="User", value=user.mention, inline=False)
     embed.add_field(name="New Rank", value=rank_name, inline=True)
     embed.add_field(name="Rank Number", value=str(rank_number), inline=True)
+    embed.add_field(name="Roblox ID", value=str(roblox_id), inline=True)
+    embed.add_field(name="Lookup", value=source, inline=True)
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
 
 
 @bot.tree.command(name="promote", description="Promote a user one rank in the Roblox group")
-@app_commands.describe(user="Discord user to promote")
-async def promote(interaction: discord.Interaction, user: discord.Member):
+@app_commands.describe(
+    user="Discord user to promote",
+    roblox_username="Optional Roblox username if Bloxlink cannot find them"
+)
+async def promote(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    roblox_username: str = None
+):
     if not can_use_ranking_commands(interaction.user):
         await interaction.response.send_message("❌ You don't have permission to use ranking commands.", ephemeral=True)
         return
 
     await interaction.response.defer(thinking=True)
 
-    # Find current rank from their Discord roles
     current_rank = None
     for rank_num, role_id in ROBLOX_RANK_TO_DISCORD_ROLE.items():
         if any(r.id == role_id for r in user.roles):
@@ -1276,7 +1329,6 @@ async def promote(interaction: discord.Interaction, user: discord.Member):
             break
 
     if current_rank is None:
-        # Default to lowest if no ranking role found
         current_rank = SORTED_RANKS[0]
 
     try:
@@ -1288,12 +1340,9 @@ async def promote(interaction: discord.Interaction, user: discord.Member):
     except ValueError:
         new_rank = SORTED_RANKS[0]
 
-    roblox_id = await get_roblox_id_from_discord(user.id)
+    roblox_id, source = await resolve_roblox_id(user, roblox_username)
     if not roblox_id:
-        await interaction.followup.send(
-            f"❌ Could not find a linked Roblox account for {user.mention}.\n"
-            "Make sure they are verified with Bloxlink."
-        )
+        await interaction.followup.send(f"❌ {source}")
         return
 
     success, message = await set_roblox_rank(roblox_id, new_rank)
@@ -1306,13 +1355,21 @@ async def promote(interaction: discord.Interaction, user: discord.Member):
     embed = discord.Embed(title="User Promoted", color=discord.Color.green())
     embed.add_field(name="User", value=user.mention, inline=False)
     embed.add_field(name="New Rank", value=ROBLOX_RANK_NAMES[new_rank], inline=True)
+    embed.add_field(name="Lookup", value=source, inline=True)
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
 
 
 @bot.tree.command(name="demote", description="Demote a user one rank in the Roblox group")
-@app_commands.describe(user="Discord user to demote")
-async def demote(interaction: discord.Interaction, user: discord.Member):
+@app_commands.describe(
+    user="Discord user to demote",
+    roblox_username="Optional Roblox username if Bloxlink cannot find them"
+)
+async def demote(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    roblox_username: str = None
+):
     if not can_use_ranking_commands(interaction.user):
         await interaction.response.send_message("❌ You don't have permission to use ranking commands.", ephemeral=True)
         return
@@ -1339,12 +1396,9 @@ async def demote(interaction: discord.Interaction, user: discord.Member):
         await interaction.followup.send("❌ Could not determine current rank.")
         return
 
-    roblox_id = await get_roblox_id_from_discord(user.id)
+    roblox_id, source = await resolve_roblox_id(user, roblox_username)
     if not roblox_id:
-        await interaction.followup.send(
-            f"❌ Could not find a linked Roblox account for {user.mention}.\n"
-            "Make sure they are verified with Bloxlink."
-        )
+        await interaction.followup.send(f"❌ {source}")
         return
 
     success, message = await set_roblox_rank(roblox_id, new_rank)
@@ -1357,6 +1411,7 @@ async def demote(interaction: discord.Interaction, user: discord.Member):
     embed = discord.Embed(title="User Demoted", color=discord.Color.orange())
     embed.add_field(name="User", value=user.mention, inline=False)
     embed.add_field(name="New Rank", value=ROBLOX_RANK_NAMES[new_rank], inline=True)
+    embed.add_field(name="Lookup", value=source, inline=True)
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
 
