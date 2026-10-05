@@ -1454,10 +1454,20 @@ async def demote(
 
     await update_discord_roles_for_rank(user, new_rank)
 
-    embed = discord.Embed(title="User Demoted", color=discord.Color.orange())
-    embed.add_field(name="User", value=user.mention, inline=False)
-    embed.add_field(name="New Rank", value=ROBLOX_RANK_NAMES[new_rank], inline=True)
-    embed.add_field(name="Lookup", value=source, inline=True)
+    old_name = ROBLOX_RANK_NAMES.get(current_rank, "Unknown")
+    new_name = ROBLOX_RANK_NAMES.get(new_rank, "Unknown")
+    display_name = roblox_username or user.display_name
+    who = f"{display_name} ({roblox_id})" if roblox_id else display_name
+
+    embed = discord.Embed(
+        title="Success",
+        description=f"The role of **{who}** was changed from **{old_name}** to **{new_name}**.",
+        color=discord.Color.green()
+    )
+    if roblox_id:
+        embed.set_thumbnail(
+            url=f"https://www.roblox.com/headshot-thumbnail/image?userId={roblox_id}&width=420&height=420&format=png"
+        )
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
 
