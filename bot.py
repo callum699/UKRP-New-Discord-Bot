@@ -201,6 +201,45 @@ async def get_roblox_id_from_discord(discord_user_id: int) -> int | None:
         print(f"Bloxlink lookup error: {e}")
     return None
 
+async def get_current_rank_number(roblox_user_id: int):
+    """Read the user's current group rank from Roblox."""
+    if not ROBLOX_API_KEY:
+        return None
+
+    headers = {"x-api-key": ROBLOX_API_KEY}
+    filter_q = f"user == 'users/{roblox_user_id}'"
+    url = (
+        f"https://apis.roblox.com/cloud/v2/groups/{ROBLOX_GROUP_ID}/memberships"
+        f"?maxPageSize=10&filter={filter_q}"
+    )
+    name_to_rank = {name.lower(): num for num, name in ROBLOX_RANK_NAMES.items()}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as resp:
+                if resp.status != 200:
+                    return None
+                memberships = (await resp.json()).get("groupMemberships") or []
+                if not memberships:
+                    return None
+                role_path = memberships[0].get("role") or ""
+                role_id = role_path.split("/")[-1]
+
+            roles_url = f"https://apis.roblox.com/cloud/v2/groups/{ROBLOX_GROUP_ID}/roles?maxPageSize=50"
+            async with session.get(roles_url, headers=headers) as resp:
+                if resp.status != 200:
+                    return None
+                roles = (await resp.json()).get("groupRoles") or []
+
+        for role in roles:
+            path = role.get("path") or ""
+            if path.endswith(f"/{role_id}") or str(role.get("id")) == role_id:
+                name = (role.get("displayName") or role.get("name") or "").lower()
+                return name_to_rank.get(name)
+    except Exception as e:
+        print(f"Current rank lookup error: {e}")
+    return None
+
 async def get_roblox_avatar(roblox_id: int):
     url = (
         "https://thumbnails.roblox.com/v1/users/avatar-headshot"
@@ -1336,27 +1375,50 @@ async def setrank(
         return
 
     await interaction.response.defer(thinking=True)
-    rank_number = int(rank)
-    rank_name = ROBLOX_RANK_NAMES.get(rank_number, "Unknown")
+
+    new_rank = int(rank)
+    new_name = ROBLOX_RANK_NAMES.get(new_rank, "Unknown")
+
+    current_rank = None
+    for rank_num, role_id in ROBLOX_RANK_TO_DISCORD_ROLE.items():
+        if any(r.id == role_id for r in user.roles):
+            current_rank = rank_num
+            break
 
     roblox_id, source = await resolve_roblox_id(user, roblox_username)
     if not roblox_id:
         await interaction.followup.send(f"❌ {source}")
         return
 
-    success, message = await set_roblox_rank(roblox_id, rank_number)
+    if current_rank is None:
+        current_rank = await get_current_rank_number(roblox_id)
+
+    success, message = await set_roblox_rank(roblox_id, new_rank)
     if not success:
         await interaction.followup.send(f"❌ Failed to set rank in Roblox group.\n`{message}`")
         return
 
-    await update_discord_roles_for_rank(user, rank_number)
+    await update_discord_roles_for_rank(user, new_rank)
 
-    embed = discord.Embed(title="Rank Updated", color=discord.Color.green())
-    embed.add_field(name="User", value=user.mention, inline=False)
-    embed.add_field(name="New Rank", value=rank_name, inline=True)
-    embed.add_field(name="Rank Number", value=str(rank_number), inline=True)
-    embed.add_field(name="Roblox ID", value=str(roblox_id), inline=True)
-    embed.add_field(name="Lookup", value=source, inline=True)
+    old_name = ROBLOX_RANK_NAMES.get(current_rank, "Unknown")
+    display_name = roblox_username or user.display_name
+    who = f"{display_name} ({roblox_id})" if roblox_id else display_name
+
+    if current_rank is not None and new_rank < current_rank:
+        title = "Demotion"
+        color = discord.Color.red()
+    else:
+        title = "Promotion"
+        color = discord.Color.green()
+
+    embed = discord.Embed(
+        title=title,
+        description=f"The role of **{who}** was changed from **{old_name}** to **{new_name}**.",
+        color=color
+    )
+    avatar_url = await get_roblox_avatar(roblox_id)
+    if avatar_url:
+        embed.set_thumbnail(url=avatar_url)
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
 
