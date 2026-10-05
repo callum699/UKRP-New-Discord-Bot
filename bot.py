@@ -1413,7 +1413,7 @@ async def promote(
     who = f"{display_name} ({roblox_id})" if roblox_id else display_name
 
     embed = discord.Embed(
-        title="Success",
+        title="Promotion",
         description=f"The role of **{who}** was changed from **{old_name}** to **{new_name}**.",
         color=discord.Color.green()
     )
@@ -1478,7 +1478,7 @@ async def demote(
     who = f"{display_name} ({roblox_id})" if roblox_id else display_name
 
     embed = discord.Embed(
-        title="Success",
+        title="Demotion",
         description=f"The role of **{who}** was changed from **{old_name}** to **{new_name}**.",
         color=discord.Color.red()
     )
