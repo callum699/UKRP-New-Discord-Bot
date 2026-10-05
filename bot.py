@@ -1462,7 +1462,7 @@ async def demote(
     embed = discord.Embed(
         title="Success",
         description=f"The role of **{who}** was changed from **{old_name}** to **{new_name}**.",
-        color=discord.Color.green()
+        color=discord.Color.red()
     )
     if roblox_id:
         embed.set_thumbnail(
