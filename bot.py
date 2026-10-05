@@ -201,6 +201,25 @@ async def get_roblox_id_from_discord(discord_user_id: int) -> int | None:
         print(f"Bloxlink lookup error: {e}")
     return None
 
+async def get_roblox_avatar(roblox_id: int):
+    url = (
+        "https://thumbnails.roblox.com/v1/users/avatar-headshot"
+        f"?userIds={roblox_id}&size=420x420&format=Png&isCircular=false"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+                items = data.get("data") or []
+                if not items:
+                    return None
+                return items[0].get("imageUrl")
+    except Exception as e:
+        print(f"Avatar lookup error: {e}")
+        return None
+
 async def get_roblox_id_from_username(username: str):
     """Resolve a Roblox username to a user ID."""
     username = username.strip().lstrip("@")
@@ -1398,10 +1417,9 @@ async def promote(
         description=f"The role of **{who}** was changed from **{old_name}** to **{new_name}**.",
         color=discord.Color.green()
     )
-    if roblox_id:
-        embed.set_thumbnail(
-            url=f"https://www.roblox.com/headshot-thumbnail/image?userId={roblox_id}&width=420&height=420&format=png"
-        )
+    avatar_url = await get_roblox_avatar(roblox_id)
+    if avatar_url:
+        embed.set_thumbnail(url=avatar_url)
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
 
@@ -1465,9 +1483,9 @@ async def demote(
         color=discord.Color.red()
     )
     if roblox_id:
-        embed.set_thumbnail(
-            url=f"https://www.roblox.com/headshot-thumbnail/image?userId={roblox_id}&width=420&height=420&format=png"
-        )
+        avatar_url = await get_roblox_avatar(roblox_id)
+        if avatar_url:
+            embed.set_thumbnail(url=avatar_url)
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
 
