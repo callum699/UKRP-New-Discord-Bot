@@ -539,7 +539,7 @@ async def apply_police_disciplinary(
         target_role_id = POLICE_BARRED_LIST_ROLE_ID
         embed_title = "Police Blacklist Applied"
         embed_color = discord.Color.red()
-        is_permanent = True
+        is_permanent = False          # now temporary
         backup_type = "blacklist"
     else:
         target_role_id = REMOVAL_COOLDOWN_ROLE_ID
@@ -583,17 +583,19 @@ async def apply_police_disciplinary(
             if not duration:
                 await interaction.followup.send("❌ Duration is required (e.g. 7d, 28d).")
                 return
+
             try:
                 seconds = parse_duration(duration)
             except Exception:
                 await interaction.followup.send("❌ Invalid duration format. Use e.g. `7d`, `14d`, `28d`.")
                 return
+
             if seconds <= 0:
                 await interaction.followup.send("❌ Invalid duration.")
                 return
 
             expires_at = int(time.time()) + seconds
-            await member.add_roles(target_role, reason=f"Police Removal - {target_role.name}")
+            await member.add_roles(target_role, reason=f"Police {action} - {target_role.name}")
             await add_temp_role(member.id, guild.id, target_role.id, expires_at, interaction.user.id)
             role_text = f"{target_role.mention} (Temporary - {duration})"
 
@@ -1018,10 +1020,10 @@ async def loa_cleanup_loop():
         await asyncio.sleep(300)
 
 # ================== COMMANDS ==================
-@bot.tree.command(name="policeblacklist", description="Blacklist a user (strip roles + permanent Police Barred List)")
-@app_commands.describe(user="Target user")
-async def policeblacklist(interaction: discord.Interaction, user: discord.Member):
-    await apply_police_disciplinary(interaction, user, "blacklist")
+@bot.tree.command(name="policeblacklist", description="Blacklist a user (strip roles + temporary/permanent Police Barred List)")
+@app_commands.describe(user="Target user", duration="Duration (e.g. 7d, 28d)")
+async def policeblacklist(interaction: discord.Interaction, user: discord.Member, duration: str):
+    await apply_police_disciplinary(interaction, user, "blacklist", duration)
 
 @bot.tree.command(name="policeremoval", description="Apply police removal (strip roles + temporary Removal Cooldown)")
 @app_commands.describe(user="Target user", duration="Duration (e.g. 28d)")
