@@ -90,6 +90,78 @@ JOIN_LEAVE_LOG_CHANNEL_ID = 1571293924662837409
 USER_UPDATE_LOG_CHANNEL_ID = 1571295165384097904
 VOICE_LOG_CHANNEL_ID = 1571295999048032478
 
+AUTOMOD_LOG_CHANNEL_ID = 1571298155499233425
+
+AUTOMOD_IMMUNE_ROLE_IDS = [
+    1457118438614106405,  # UK:RP | Co-Owner
+    1457118167213277419,  # UK:RP | Owner
+    1457118167213277418,  # UK:RP | Community Manager
+    1457118167213277416,  # UK:RP | Department Manager
+    1457118167204630725,  # Gold Command
+]
+
+TICKET_CATEGORY_IDS = [
+    1457118169612423292,
+    1457118169612423294,
+    1457118169612423296,
+    1457118169612423297,
+]
+
+IMAGE_SPAM_IGNORED = set(TICKET_CATEGORY_IDS)
+
+STICKER_IGNORED = {
+    1457118169830265046,
+    1457118171382157377,
+    1510299735431319697,
+    1457118173475115110,
+    1457118173672243216,
+    1457118173865447588,
+    1457118173865447594,
+    1457118171680215251,
+}
+
+INVITE_IGNORED = set(TICKET_CATEGORY_IDS) | {1457118169830265046}
+
+ANTI_MENTION_IGNORED = set(TICKET_CATEGORY_IDS) | {
+    1457118169830265053, 1457118169964740742, 1457118171516633222,
+    1461664005012590603, 1457118171181093098, 1457118171680215247,
+    1457118171830947865, 1510298471746240713, 1510299984552136824,
+    1457118173475115106, 1457118173672243213, 1457118173672243219,
+    1457118173865447591, 1461474414125125683, 1461000174913589331,
+    1461472474666369215,
+}
+
+LINKS_IGNORED = set(TICKET_CATEGORY_IDS) | {
+    1457118170761400416, 1457118170761400417, 1457118170761400420,
+    1457118171382157377, 1457118171382157379, 1457118171382157374,
+    1457118171181093098, 1457118171516633222, 1457118170249822362,
+    1457118171680215247, 1457118171680215251, 1457118171830947865,
+    1457118171830947868, 1507033797819109596, 1507055428079587511,
+    1507055503241384118, 1507055611966394529, 1457118173475115106,
+    1457118173475115110, 1500983549606625280, 1457118173672243210,
+    1457118173672243216, 1461474414125125683, 1457118173865447588,
+    1461000174913589331, 1461004155534446812, 1461001008388903145,
+    1457118173865447594, 1461472474666369215,
+}
+
+FILES_IGNORED = set(TICKET_CATEGORY_IDS) | {
+    1457118169830265046, 1457118171382157377, 1457118171680215251,
+    1510299735431319697, 1457118173475115110, 1457118173672243216,
+    1457118173865447588, 1457118173865447594,
+}
+
+MASS_MENTION_IGNORED = {
+    1457118169830265049, 1457118169830265051, 1457118169964740746,
+    1457118169612423299, 1457118169612423300, 1457118169830265046,
+    1457118169830265048, 1457118169830265053, 1457118169964740742,
+    1457118171516633222, 1457118173672243210, 1457118174859366636,
+}
+
+automod_violations = {}
+
+INVITE_REGEX = re.compile(r"(discord\.gg/|discord\.com/invite/|discordapp\.com/invite/)", re.I)
+LINK_REGEX = re.compile(r"https?://|www\.", re.I)
+
 LOA_ROLE_ID = 1457118167204630724
 
 DB_NAME = "globalbans.db"
@@ -154,6 +226,64 @@ def can_use_police_commands(user: discord.Member) -> bool:
     if is_admin(user):
         return True
     return any(role.id in POLICE_COMMAND_ROLE_IDS for role in user.roles)
+
+# ================== AUTOMOD HELPERS ==================
+def is_automod_immune(member: discord.Member) -> bool:
+    if is_admin(member):
+        return True
+    return any(role.id in AUTOMOD_IMMUNE_ROLE_IDS for role in member.roles)
+
+
+def is_ignored(channel, ignored_set) -> bool:
+    if channel.id in ignored_set:
+        return True
+    if getattr(channel, "category_id", None) in ignored_set:
+        return True
+    return False
+
+
+async def handle_automod(message: discord.Message, reason: str, delete: bool = True):
+    if delete:
+        try:
+            await message.delete()
+        except Exception:
+            pass
+
+    log_channel = bot.get_channel(AUTOMOD_LOG_CHANNEL_ID)
+    if log_channel:
+        embed = discord.Embed(color=0xED4245)
+        embed.set_author(
+            name=message.author.display_name,
+            icon_url=message.author.display_avatar.url
+        )
+        embed.description = f"{message.author.mention} triggered automod in {message.channel.mention}."
+        embed.add_field(name="Reason", value=reason, inline=False)
+        content = message.content[:1024] if message.content else "*attachment/sticker*"
+        embed.add_field(name="Message Content", value=content, inline=False)
+        embed.set_footer(text=f"User ID: {message.author.id}")
+        embed.timestamp = discord.utils.utcnow()
+        await log_channel.send(embed=embed)
+
+    try:
+        await message.channel.send(
+            f"{message.author.mention} your message was removed. **Reason:** {reason}",
+            delete_after=8
+        )
+    except Exception:
+        pass
+
+    user_id = message.author.id
+    automod_violations[user_id] = automod_violations.get(user_id, 0) + 1
+
+    if automod_violations[user_id] >= 3:
+        try:
+            until = discord.utils.utcnow() + timedelta(minutes=5)
+            await message.author.timeout(until, reason="Automod: 3 violations")
+            automod_violations[user_id] = 0
+            if log_channel:
+                await log_channel.send(f"{message.author.mention} was muted for 5 minutes (3 Automod violations).")
+        except Exception:
+            pass
 
 # ================== ROLE BACKUP SYSTEM ==================
 async def save_role_backup(member: discord.Member, backup_type: str):
@@ -1958,6 +2088,61 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
         embed.set_footer(text=f"User ID: {member.id}")
         embed.timestamp = discord.utils.utcnow()
         await log_channel.send(embed=embed)
+
+# ================== AUTOMOD EVENT ==================
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot or not message.guild:
+        return
+    if is_automod_immune(message.author):
+        return
+
+    content = message.content or ""
+    channel = message.channel
+
+    # Invite Links
+    if not is_ignored(channel, INVITE_IGNORED) and INVITE_REGEX.search(content):
+        await handle_automod(message, "Sent an invite link")
+        return
+
+    # Links
+    if not is_ignored(channel, LINKS_IGNORED) and LINK_REGEX.search(content):
+        await handle_automod(message, "Used a link")
+        return
+
+    # Files / Attachments
+    if not is_ignored(channel, FILES_IGNORED) and message.attachments:
+        await handle_automod(message, "Sent too many attachments")
+        return
+
+    # Stickers
+    if not is_ignored(channel, STICKER_IGNORED) and message.stickers:
+        await handle_automod(message, "Sent a sticker")
+        return
+
+    # Image Spam
+    if not is_ignored(channel, IMAGE_SPAM_IGNORED):
+        images = [a for a in message.attachments if a.content_type and a.content_type.startswith("image/")]
+        if len(images) > 1:
+            await handle_automod(message, "Sent too many attachments")
+            return
+
+    # Mass Mentions
+    if not is_ignored(channel, MASS_MENTION_IGNORED):
+        if len(message.mentions) >= 5 or len(message.role_mentions) >= 3:
+            await handle_automod(message, "Mass mentions", delete=False)
+            return
+
+    # Anti-Mention (@everyone / @here)
+    if not is_ignored(channel, ANTI_MENTION_IGNORED) and message.mention_everyone:
+        await handle_automod(message, "Mentioned everyone", delete=False)
+        return
+
+    # Emoji Spam (max 5)
+    emoji_count = len(re.findall(r"<a?:\w+:\d+>|[\U0001F300-\U0001F9FF]", content))
+    if emoji_count >= 5:
+        await handle_automod(message, f"Used {emoji_count} emojis")
+        return
 
 # ================== RUN ==================
 bot.run(TOKEN)
