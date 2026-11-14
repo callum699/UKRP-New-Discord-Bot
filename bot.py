@@ -87,6 +87,7 @@ LOG_CHANNEL_ID = 1504537214829461677
 MOD_LOG_CHANNEL_ID = 1571289911515160666
 CHAT_LOG_CHANNEL_ID = 1571291826814586940
 JOIN_LEAVE_LOG_CHANNEL_ID = 1571293924662837409
+USER_UPDATE_LOG_CHANNEL_ID = 1571295165384097904
 
 LOA_ROLE_ID = 1457118167204630724
 
@@ -1854,6 +1855,56 @@ async def on_member_remove(member: discord.Member):
     embed.timestamp = discord.utils.utcnow()
 
     await log_channel.send(embed=embed)
+
+@bot.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+    log_channel = bot.get_channel(USER_UPDATE_LOG_CHANNEL_ID)
+    if not log_channel:
+        return
+
+    # Nickname change
+    if before.nick != after.nick:
+        embed = discord.Embed(color=0xFEE75C)
+        embed.set_author(
+            name=after.display_name,
+            icon_url=after.display_avatar.url
+        )
+        embed.description = f"The nickname for {after.mention} was changed."
+        embed.add_field(name="Before", value=before.nick or before.name, inline=True)
+        embed.add_field(name="After", value=after.nick or after.name, inline=True)
+        embed.set_footer(text=f"User ID: {after.id}")
+        embed.timestamp = discord.utils.utcnow()
+        await log_channel.send(embed=embed)
+
+    # Roles added
+    added_roles = [role for role in after.roles if role not in before.roles]
+    for role in added_roles:
+        if role.name == "@everyone":
+            continue
+        embed = discord.Embed(color=0xFEE75C)
+        embed.set_author(
+            name=after.display_name,
+            icon_url=after.display_avatar.url
+        )
+        embed.description = f"{after.mention} was given the {role.mention} role."
+        embed.set_footer(text=f"User ID: {after.id}")
+        embed.timestamp = discord.utils.utcnow()
+        await log_channel.send(embed=embed)
+
+    # Roles removed
+    removed_roles = [role for role in before.roles if role not in after.roles]
+    for role in removed_roles:
+        if role.name == "@everyone":
+            continue
+        embed = discord.Embed(color=0xFEE75C)
+        embed.set_author(
+            name=after.display_name,
+            icon_url=after.display_avatar.url
+        )
+        embed.description = f"{after.mention} was removed from the {role.mention} role."
+        embed.set_footer(text=f"User ID: {after.id}")
+        embed.timestamp = discord.utils.utcnow()
+        await log_channel.send(embed=embed)
 
 # ================== RUN ==================
 bot.run(TOKEN)
