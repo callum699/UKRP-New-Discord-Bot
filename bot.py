@@ -1751,6 +1751,10 @@ async def on_message_edit(before: discord.Message, after: discord.Message):
         return
 
     embed = discord.Embed(color=0xFEE75C)
+    embed.set_author(
+        name=before.author.display_name,
+        icon_url=before.author.display_avatar.url
+    )
     embed.description = (
         f"Message from {before.author.mention} edited in {before.channel.mention}.\n"
         f"[Jump to Message]({after.jump_url})"
@@ -1762,6 +1766,7 @@ async def on_message_edit(before: discord.Message, after: discord.Message):
 
     await log_channel.send(embed=embed)
 
+
 @bot.event
 async def on_message_delete(message: discord.Message):
     if message.author.bot or not message.guild:
@@ -1772,6 +1777,10 @@ async def on_message_delete(message: discord.Message):
         return
 
     embed = discord.Embed(color=0xED4245)
+    embed.set_author(
+        name=message.author.display_name,
+        icon_url=message.author.display_avatar.url
+    )
     embed.description = (
         f"Message from {message.author.mention} deleted in {message.channel.mention}.\n"
         f"It was sent on {discord.utils.format_dt(message.created_at, style='F')}"
