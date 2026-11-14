@@ -88,6 +88,7 @@ MOD_LOG_CHANNEL_ID = 1571289911515160666
 CHAT_LOG_CHANNEL_ID = 1571291826814586940
 JOIN_LEAVE_LOG_CHANNEL_ID = 1571293924662837409
 USER_UPDATE_LOG_CHANNEL_ID = 1571295165384097904
+VOICE_LOG_CHANNEL_ID = 1571295999048032478
 
 LOA_ROLE_ID = 1457118167204630724
 
@@ -1903,6 +1904,58 @@ async def on_member_update(before: discord.Member, after: discord.Member):
         )
         embed.description = f"{after.mention} was removed from the {role.mention} role."
         embed.set_footer(text=f"User ID: {after.id}")
+        embed.timestamp = discord.utils.utcnow()
+        await log_channel.send(embed=embed)
+
+@bot.event
+async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+    if before.channel == after.channel:
+        return
+
+    log_channel = bot.get_channel(VOICE_LOG_CHANNEL_ID)
+    if not log_channel:
+        return
+
+    # Joined a voice channel
+    if before.channel is None and after.channel is not None:
+        embed = discord.Embed(color=0x57F287)  # green
+        embed.set_author(name=member.display_name, icon_url=member.display_avatar.url)
+        embed.description = f"{member.mention} has joined a voice channel."
+        embed.add_field(name="Channel", value=after.channel.name, inline=True)
+        embed.add_field(name="Member Count", value=str(len(after.channel.members)), inline=True)
+        embed.set_footer(text=f"User ID: {member.id}")
+        embed.timestamp = discord.utils.utcnow()
+        await log_channel.send(embed=embed)
+        return
+
+    # Left a voice channel
+    if before.channel is not None and after.channel is None:
+        embed = discord.Embed(color=0xED4245)  # red
+        embed.set_author(name=member.display_name, icon_url=member.display_avatar.url)
+        embed.description = f"{member.mention} has left a voice channel."
+        embed.add_field(name="Channel", value=before.channel.name, inline=True)
+        embed.add_field(name="Member Count", value=str(len(before.channel.members)), inline=True)
+        embed.set_footer(text=f"User ID: {member.id}")
+        embed.timestamp = discord.utils.utcnow()
+        await log_channel.send(embed=embed)
+        return
+
+    # Switched voice channels
+    if before.channel is not None and after.channel is not None:
+        embed = discord.Embed(color=0xFEE75C)  # yellow
+        embed.set_author(name=member.display_name, icon_url=member.display_avatar.url)
+        embed.description = f"{member.mention} has moved to a different voice channel."
+        embed.add_field(
+            name="Previous Channel",
+            value=f"{before.channel.name} ({len(before.channel.members)} members)",
+            inline=False
+        )
+        embed.add_field(
+            name="New Channel",
+            value=f"{after.channel.name} ({len(after.channel.members)} members)",
+            inline=False
+        )
+        embed.set_footer(text=f"User ID: {member.id}")
         embed.timestamp = discord.utils.utcnow()
         await log_channel.send(embed=embed)
 
