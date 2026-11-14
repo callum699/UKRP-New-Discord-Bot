@@ -84,6 +84,7 @@ ROLE_COMMAND_ALLOWED_ROLES = {
 
 LOA_LOG_CHANNEL_ID = 1511706584189767700
 LOG_CHANNEL_ID = 1504537214829461677
+MOD_LOG_CHANNEL_ID = 1571289911515160666
 LOA_ROLE_ID = 1457118167204630724
 
 DB_NAME = "globalbans.db"
@@ -1553,6 +1554,189 @@ async def demote(
     embed.set_footer(text=f"Action by {interaction.user.display_name}")
     await interaction.followup.send(embed=embed)
 
+@bot.tree.command(name="mute", description="timeout a user")
+@app_commands.describe(
+    user="User to mute",
+    duration="Duration (e.g. 10m, 1h, 1d)",
+    reason="Reason for the mute"
+)
+async def mute(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    duration: str,
+    reason: str = "No reason provided"
+):
+    if not is_admin(interaction.user):
+        await interaction.response.send_message("❌ Not allowed", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+
+    try:
+        seconds = parse_duration(duration)
+        if seconds <= 0 or seconds > 2419200:  # max 28 days
+            await interaction.followup.send("❌ Invalid duration. Use something like `10m`, `1h`, `1d` (max 28 days).")
+            return
+
+        until = discord.utils.utcnow() + timedelta(seconds=seconds)
+        await user.timeout(until, reason=f"Muted by {interaction.user}: {reason}")
+
+        embed = discord.Embed(
+            title="User Muted",
+            color=discord.Color.orange(),
+            description=f"{user.mention} has been muted."
+        )
+        embed.add_field(name="Duration", value=duration, inline=True)
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.set_footer(text=f"Action by {interaction.user.display_name}")
+        await interaction.followup.send(embed=embed)
+
+        # Optional log
+        log_channel = bot.get_channel(MOD_LOG_CHANNEL_ID)
+        if log_channel:
+            log_embed = discord.Embed(title="Mute", color=discord.Color.orange())
+            log_embed.add_field(name="User", value=f"{user} (`{user.id}`)", inline=False)
+            log_embed.add_field(name="Duration", value=duration, inline=True)
+            log_embed.add_field(name="Reason", value=reason, inline=False)
+            log_embed.set_footer(text=f"By {interaction.user}")
+            await log_channel.send(embed=log_embed)
+
+    except discord.Forbidden:
+        await interaction.followup.send("❌ I don't have permission to mute that user.")
+    except Exception as e:
+        print(f"Mute error: {e}")
+        await interaction.followup.send("❌ Something went wrong.")
+
+
+@bot.tree.command(name="unmute", description="Unmute a user")
+@app_commands.describe(user="User to unmute", reason="Reason")
+async def unmute(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    reason: str = "No reason provided"
+):
+    if not is_admin(interaction.user):
+        await interaction.response.send_message("❌ Not allowed", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+
+    try:
+        await user.timeout(None, reason=f"Unmuted by {interaction.user}: {reason}")
+
+        embed = discord.Embed(
+            title="User Unmuted",
+            color=discord.Color.green(),
+            description=f"{user.mention} has been unmuted."
+        )
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.set_footer(text=f"Action by {interaction.user.display_name}")
+        await interaction.followup.send(embed=embed)
+
+        log_channel = bot.get_channel(MOD_LOG_CHANNEL_ID)
+        if log_channel:
+            log_embed = discord.Embed(title="Unmute", color=discord.Color.green())
+            log_embed.add_field(name="User", value=f"{user} (`{user.id}`)", inline=False)
+            log_embed.add_field(name="Reason", value=reason, inline=False)
+            log_embed.set_footer(text=f"By {interaction.user}")
+            await log_channel.send(embed=log_embed)
+
+    except discord.Forbidden:
+        await interaction.followup.send("❌ I don't have permission to unmute that user.")
+    except Exception as e:
+        print(f"Unmute error: {e}")
+        await interaction.followup.send("❌ Something went wrong.")
+
+@bot.tree.command(name="kick", description="Kick a user from the server")
+@app_commands.describe(user="User to kick", reason="Reason for the kick")
+async def kick(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    reason: str = "No reason provided"
+):
+    if not is_admin(interaction.user):
+        await interaction.response.send_message("❌ Not allowed", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+
+    try:
+        await user.kick(reason=f"Kicked by {interaction.user}: {reason}")
+
+        embed = discord.Embed(
+            title="User Kicked",
+            color=discord.Color.red(),
+            description=f"{user.mention} has been kicked."
+        )
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.set_footer(text=f"Action by {interaction.user.display_name}")
+        await interaction.followup.send(embed=embed)
+
+        log_channel = bot.get_channel(MOD_LOG_CHANNEL_ID)
+        if log_channel:
+            log_embed = discord.Embed(title="Kick", color=discord.Color.red())
+            log_embed.add_field(name="User", value=f"{user} (`{user.id}`)", inline=False)
+            log_embed.add_field(name="Reason", value=reason, inline=False)
+            log_embed.set_footer(text=f"By {interaction.user}")
+            await log_channel.send(embed=log_embed)
+
+    except discord.Forbidden:
+        await interaction.followup.send("❌ I don't have permission to kick that user.")
+    except Exception as e:
+        print(f"Kick error: {e}")
+        await interaction.followup.send("❌ Something went wrong.")
+
+@bot.tree.command(name="purge", description="Delete a number of recent messages")
+@app_commands.describe(amount="Number of messages to delete (1-100)")
+async def purge(interaction: discord.Interaction, amount: int):
+    if not is_admin(interaction.user):
+        await interaction.response.send_message("❌ Not allowed", ephemeral=True)
+        return
+
+    if amount < 1 or amount > 100:
+        await interaction.response.send_message("❌ Amount must be between 1 and 100.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        deleted = await interaction.channel.purge(limit=amount)
+        await interaction.followup.send(f"✅ Deleted **{len(deleted)}** messages.", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.followup.send("❌ I don't have permission to delete messages here.", ephemeral=True)
+    except Exception as e:
+        print(f"Purge error: {e}")
+        await interaction.followup.send("❌ Something went wrong.", ephemeral=True)
+
+@bot.tree.command(name="userinfo", description="Show information about a user")
+@app_commands.describe(user="User to check (leave empty for yourself)")
+async def userinfo(interaction: discord.Interaction, user: discord.Member = None):
+    user = user or interaction.user
+
+    embed = discord.Embed(
+        title=f"User Info - {user}",
+        color=discord.Color.blue()
+    )
+    embed.set_thumbnail(url=user.display_avatar.url)
+
+    embed.add_field(name="ID", value=user.id, inline=True)
+    embed.add_field(name="Nickname", value=user.nick or "None", inline=True)
+    embed.add_field(name="Account Created", value=discord.utils.format_dt(user.created_at, style='R'), inline=True)
+    embed.add_field(name="Joined Server", value=discord.utils.format_dt(user.joined_at, style='R') if user.joined_at else "Unknown", inline=True)
+    embed.add_field(name="Top Role", value=user.top_role.mention, inline=True)
+
+    roles = [r.mention for r in user.roles if r.name != "@everyone"]
+    embed.add_field(
+        name=f"Roles ({len(roles)})",
+        value=" ".join(roles[:15]) if roles else "None",
+        inline=False
+    )
+
+    if user.timed_out_until and user.timed_out_until > discord.utils.utcnow():
+        embed.add_field(name="Muted Until", value=discord.utils.format_dt(user.timed_out_until, style='R'), inline=False)
+
+    embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+    await interaction.response.send_message(embed=embed)
 
 # ================== RUN ==================
 bot.run(TOKEN)
