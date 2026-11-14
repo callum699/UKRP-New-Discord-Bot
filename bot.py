@@ -86,6 +86,8 @@ LOA_LOG_CHANNEL_ID = 1511706584189767700
 LOG_CHANNEL_ID = 1504537214829461677
 MOD_LOG_CHANNEL_ID = 1571289911515160666
 CHAT_LOG_CHANNEL_ID = 1571291826814586940
+JOIN_LEAVE_LOG_CHANNEL_ID = 1571293924662837409
+
 LOA_ROLE_ID = 1457118167204630724
 
 DB_NAME = "globalbans.db"
@@ -1798,6 +1800,57 @@ async def on_message_delete(message: discord.Message):
     content = message.content or "*empty or attachment only*"
     embed.add_field(name="Message Content", value=content[:1024], inline=False)
     embed.set_footer(text=f"User ID: {message.author.id} • Message ID: {message.id}")
+    embed.timestamp = discord.utils.utcnow()
+
+    await log_channel.send(embed=embed)
+
+def ordinal(n: int) -> str:
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    log_channel = bot.get_channel(JOIN_LEAVE_LOG_CHANNEL_ID)
+    if not log_channel:
+        return
+
+    count = member.guild.member_count
+
+    embed = discord.Embed(color=0x57F287)  # green
+    embed.set_author(
+        name=member.display_name,
+        icon_url=member.display_avatar.url
+    )
+    embed.description = f"{member.mention} has joined the server. They are the **{ordinal(count)}** member."
+    embed.add_field(
+        name="Account Created",
+        value=f"{discord.utils.format_dt(member.created_at, style='F')} ({discord.utils.format_dt(member.created_at, style='R')})",
+        inline=False
+    )
+    embed.set_footer(text=f"User ID: {member.id}")
+    embed.timestamp = discord.utils.utcnow()
+
+    await log_channel.send(embed=embed)
+
+
+@bot.event
+async def on_member_remove(member: discord.Member):
+    log_channel = bot.get_channel(JOIN_LEAVE_LOG_CHANNEL_ID)
+    if not log_channel:
+        return
+
+    embed = discord.Embed(color=0xED4245)  # red
+    embed.set_author(
+        name=member.display_name,
+        icon_url=member.display_avatar.url
+    )
+    embed.description = f"{member.mention} has left the server!"
+    embed.add_field(name="Member Count", value=str(member.guild.member_count), inline=False)
+    embed.set_footer(text=f"User ID: {member.id}")
     embed.timestamp = discord.utils.utcnow()
 
     await log_channel.send(embed=embed)
