@@ -85,6 +85,7 @@ ROLE_COMMAND_ALLOWED_ROLES = {
 LOA_LOG_CHANNEL_ID = 1511706584189767700
 LOG_CHANNEL_ID = 1504537214829461677
 MOD_LOG_CHANNEL_ID = 1571289911515160666
+CHAT_LOG_CHANNEL_ID = 1571291826814586940
 LOA_ROLE_ID = 1457118167204630724
 
 DB_NAME = "globalbans.db"
@@ -1737,6 +1738,60 @@ async def userinfo(interaction: discord.Interaction, user: discord.Member = None
 
     embed.set_footer(text=f"Requested by {interaction.user.display_name}")
     await interaction.response.send_message(embed=embed)
+
+@bot.event
+async def on_message_edit(before: discord.Message, after: discord.Message):
+    if before.author.bot or before.content == after.content:
+        return
+    if not before.guild:
+        return
+
+    log_channel = bot.get_channel(CHAT_LOG_CHANNEL_ID)
+    if not log_channel:
+        return
+
+    embed = discord.Embed(color=0xFEE75C)
+    embed.description = (
+        f"Message from {before.author.mention} edited in {before.channel.mention}.\n"
+        f"[Jump to Message]({after.jump_url})"
+    )
+    embed.add_field(name="Before", value=before.content[:1024] or "*empty*", inline=False)
+    embed.add_field(name="After", value=after.content[:1024] or "*empty*", inline=False)
+    embed.set_footer(text=f"User ID: {before.author.id} • Message ID: {before.id}")
+    embed.timestamp = discord.utils.utcnow()
+
+    await log_channel.send(embed=embed)
+
+@bot.event
+async def on_message_delete(message: discord.Message):
+    if message.author.bot or not message.guild:
+        return
+
+    log_channel = bot.get_channel(CHAT_LOG_CHANNEL_ID)
+    if not log_channel:
+        return
+
+    embed = discord.Embed(color=0xED4245)
+    embed.description = (
+        f"Message from {message.author.mention} deleted in {message.channel.mention}.\n"
+        f"It was sent on {discord.utils.format_dt(message.created_at, style='F')}"
+    )
+
+    if message.reference and message.reference.resolved:
+        ref = message.reference.resolved
+        if isinstance(ref, discord.Message):
+            embed.add_field(
+                name="Replied to",
+                value=f"{ref.author.mention}: {ref.content[:200] or '*embed/attachment*'}",
+                inline=False
+            )
+
+    content = message.content or "*empty or attachment only*"
+    embed.add_field(name="Message Content", value=content[:1024], inline=False)
+    embed.set_footer(text=f"User ID: {message.author.id} • Message ID: {message.id}")
+    embed.timestamp = discord.utils.utcnow()
+
+    await log_channel.send(embed=embed)
 
 # ================== RUN ==================
 bot.run(TOKEN)
