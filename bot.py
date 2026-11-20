@@ -256,7 +256,7 @@ async def handle_automod(message: discord.Message, reason: str, delete: bool = T
             name=message.author.display_name,
             icon_url=message.author.display_avatar.url
         )
-        embed.description = f"{message.author.mention} triggered automod in {message.channel.mention}."
+        embed.description = f"{message.author.mention} triggered Automod in {message.channel.mention}."
         embed.add_field(name="Reason", value=reason, inline=False)
         content = message.content[:1024] if message.content else "*attachment/sticker*"
         embed.add_field(name="Message Content", value=content, inline=False)
